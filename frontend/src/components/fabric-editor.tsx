@@ -28,7 +28,7 @@ import {
   attachFabricCanvaHoverOutline,
   installFabricSelectionChrome,
 } from '../lib/fabric-selection-chrome'
-import { bboxMinRadius, regularPolygonPoints, starPolygonPoints } from '../lib/avnac-shape-geometry'
+import { regularPolygonPoints, starPolygonPoints } from '../lib/avnac-shape-geometry'
 import {
   arrowDisplayColor,
   createArrowGroup,
@@ -83,15 +83,6 @@ const RECT_W = Math.round(ARTBOARD_W * 0.2)
 const RECT_H = Math.round(ARTBOARD_H * 0.12)
 const RECT_RX = Math.round(ARTBOARD_W * 0.004)
 
-/** Screen px: space between toolbar bottom and visual clearance above the text box. */
-const TEXT_TOOLBAR_GAP_PX = 12
-
-/** Max extra lift (screen px) so the bar clears tall glyphs when the AABB sits low. */
-const TEXT_TOOLBAR_ASCENDER_MAX_PX = 56
-
-/** Gap (screen px) between the top Background toolbar pill bottom and artboard top. */
-const BACKGROUND_BAR_GAP_PX = 6
-
 const QUICK_SHAPE_TITLE: Record<ShapesQuickAddKind, string> = {
   generic: 'Add rectangle',
   rect: 'Add rectangle',
@@ -125,6 +116,14 @@ function isEventOnFabricCanvas(canvas: Canvas, target: EventTarget | null) {
   const lower = canvas.getElement()
   const upper = canvas.upperCanvasEl
   return lower.contains(target) || upper.contains(target)
+}
+
+/** Local outer radius for centered polygon/star points after scaling is baked into geometry. */
+function outerRadiusFromScaledPolygon(obj: FabricObject) {
+  return Math.max(
+    24,
+    Math.min(obj.getScaledWidth(), obj.getScaledHeight()) / 2,
+  )
 }
 
 function primaryFontFamily(css: string) {
@@ -167,9 +166,7 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
   const canvasElRef = useRef<HTMLCanvasElement>(null)
   const artboardFrameRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
-  const backgroundBarRef = useRef<HTMLDivElement>(null)
-  const textToolbarRef = useRef<HTMLDivElement>(null)
-  const shapeToolbarRef = useRef<HTMLDivElement>(null)
+  const selectionToolsRef = useRef<HTMLDivElement>(null)
   const shapeToolSplitRef = useRef<HTMLDivElement>(null)
   const bottomToolbarRef = useRef<HTMLDivElement>(null)
   const fabricCanvasRef = useRef<Canvas | null>(null)
@@ -185,21 +182,9 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
   const [, selectionTick] = useReducer((n: number) => n + 1, 0)
   const [textToolbarValues, setTextToolbarValues] =
     useState<TextFormatToolbarValues | null>(null)
-  const [textToolbarLayout, setTextToolbarLayout] = useState<{
-    left: number
-    top: number
-  } | null>(null)
-  const [backgroundBarLayout, setBackgroundBarLayout] = useState<{
-    left: number
-    top: number
-  } | null>(null)
   const [shapesPopoverOpen, setShapesPopoverOpen] = useState(false)
   const [shapesQuickAddKind, setShapesQuickAddKind] =
     useState<ShapesQuickAddKind>('generic')
-  const [shapeToolbarLayout, setShapeToolbarLayout] = useState<{
-    left: number
-    top: number
-  } | null>(null)
   const [shapeToolbarModel, setShapeToolbarModel] = useState<{
     meta: AvnacShapeMeta
     paint: BgValue
@@ -222,26 +207,6 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     'center',
   )
 
-  const syncBackgroundBarPosition = useCallback(() => {
-    const frame = artboardFrameRef.current
-    const canvas = fabricCanvasRef.current
-    if (!frame || !canvas || !ready) {
-      setBackgroundBarLayout(null)
-      return
-    }
-    const rect = frame.getBoundingClientRect()
-    const cx = rect.left + rect.width / 2
-
-    if (canvasBodySelected) {
-      setBackgroundBarLayout({
-        left: cx,
-        top: rect.top - BACKGROUND_BAR_GAP_PX,
-      })
-    } else {
-      setBackgroundBarLayout(null)
-    }
-  }, [ready, canvasBodySelected])
-
   const syncTextToolbar = useCallback(() => {
     const canvas = fabricCanvasRef.current
     const mod = fabricModRef.current
@@ -255,25 +220,10 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
       !(obj instanceof mod.IText)
     ) {
       setTextToolbarValues(null)
-      setTextToolbarLayout(null)
       return
     }
 
     setTextToolbarValues(readTextFormat(obj))
-    obj.setCoords()
-    const br = obj.getBoundingRect()
-    const canvasEl = canvas.upperCanvasEl
-    const rect = canvasEl.getBoundingClientRect()
-    const sx = rect.width / canvas.getWidth()
-    const sy = rect.height / canvas.getHeight()
-    const left = rect.left + (br.left + br.width / 2) * sx
-    const bboxTop = rect.top + br.top * sy
-    const fs = obj.fontSize ?? FONT_SIZE
-    const ascenderLift = Math.min(
-      TEXT_TOOLBAR_ASCENDER_MAX_PX,
-      Math.round(fs * sy * 0.22),
-    )
-    setTextToolbarLayout({ left, top: bboxTop - ascenderLift })
   }, [])
 
   const syncShapeToolbar = useCallback(() => {
@@ -292,7 +242,6 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
         meta.kind === 'line' ||
         meta.kind === 'arrow')
     if (targets.length !== 1 || !obj || !shapeBarKind || !meta) {
-      setShapeToolbarLayout(null)
       setShapeToolbarModel(null)
       return
     }
@@ -311,14 +260,6 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
       syncAvnacArrowCurveControlVisibility(obj)
     }
     obj.setCoords()
-    const br = obj.getBoundingRect()
-    const canvasEl = canvas.upperCanvasEl
-    const rect = canvasEl.getBoundingClientRect()
-    const sx = rect.width / canvas.getWidth()
-    const sy = rect.height / canvas.getHeight()
-    const left = rect.left + (br.left + br.width / 2) * sx
-    const bboxTop = rect.top + br.top * sy
-    setShapeToolbarLayout({ left, top: bboxTop - TEXT_TOOLBAR_GAP_PX })
   }, [])
 
   const onTextFormatChange = useCallback(
@@ -459,9 +400,8 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     queueMicrotask(() => {
       syncTextToolbar()
       syncShapeToolbar()
-      syncBackgroundBarPosition()
     })
-  }, [syncTextToolbar, syncShapeToolbar, syncBackgroundBarPosition])
+  }, [syncTextToolbar, syncShapeToolbar])
 
   useEffect(() => {
     const canvas = fabricCanvasRef.current
@@ -545,10 +485,9 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
       }
       const onClear = () => {
         setHasObjectSelected(false)
+        setCanvasBodySelected(true)
         setSelectedPaint(DEFAULT_PAINT)
         setTextToolbarValues(null)
-        setTextToolbarLayout(null)
-        setShapeToolbarLayout(null)
         setShapeToolbarModel(null)
         selectionTick()
       }
@@ -569,7 +508,7 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
       window.addEventListener('keydown', onKeyDown)
       setReady(true)
       setHasObjectSelected(false)
-      setCanvasBodySelected(false)
+      setCanvasBodySelected(true)
 
       if (disposed) {
         canvas.off('selection:created', onSelect)
@@ -670,7 +609,6 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     const bump = () => {
       syncTextToolbar()
       syncShapeToolbar()
-      syncBackgroundBarPosition()
     }
     vp.addEventListener('scroll', bump, { passive: true })
     window.addEventListener('scroll', bump, { passive: true })
@@ -680,11 +618,7 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
       window.removeEventListener('scroll', bump)
       window.removeEventListener('resize', bump)
     }
-  }, [ready, syncTextToolbar, syncShapeToolbar, syncBackgroundBarPosition])
-
-  useLayoutEffect(() => {
-    syncBackgroundBarPosition()
-  }, [syncBackgroundBarPosition, fitZoomPercent])
+  }, [ready, syncTextToolbar, syncShapeToolbar])
 
   useLayoutEffect(() => {
     if (!ready) return
@@ -705,7 +639,7 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
   useEffect(() => {
     if (!bgPopoverOpen) return
     const onDoc = (e: MouseEvent) => {
-      if (backgroundBarRef.current?.contains(e.target as Node)) return
+      if (selectionToolsRef.current?.contains(e.target as Node)) return
       setBgPopoverOpen(false)
     }
     document.addEventListener('mousedown', onDoc)
@@ -723,9 +657,7 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
       const c = fabricCanvasRef.current
       if (!c) return
       const t = e.target as Node
-      if (backgroundBarRef.current?.contains(t)) return
-      if (textToolbarRef.current?.contains(t)) return
-      if (shapeToolbarRef.current?.contains(t)) return
+      if (selectionToolsRef.current?.contains(t)) return
       if (bottomToolbarRef.current?.contains(t)) return
       if (isEventOnFabricCanvas(c, t)) return
 
@@ -933,10 +865,9 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     const meta = getAvnacShapeMeta(obj)
     if (!meta || meta.kind !== 'polygon') return
     const n = Math.max(3, Math.min(32, Math.round(sides)))
-    const br = obj.getBoundingRect()
-    const R = bboxMinRadius(br)
+    const R = outerRadiusFromScaledPolygon(obj)
     const pts = regularPolygonPoints(n, R)
-    obj.set({ points: pts })
+    obj.set({ points: pts, scaleX: 1, scaleY: 1 })
     setAvnacShapeMeta(obj, { ...meta, polygonSides: n })
     obj.setCoords()
     canvas.requestRenderAll()
@@ -952,10 +883,9 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     const meta = getAvnacShapeMeta(obj)
     if (!meta || meta.kind !== 'star') return
     const n = Math.max(3, Math.min(24, Math.round(points)))
-    const br = obj.getBoundingRect()
-    const R = bboxMinRadius(br)
+    const R = outerRadiusFromScaledPolygon(obj)
     const pts = starPolygonPoints(n, R)
-    obj.set({ points: pts })
+    obj.set({ points: pts, scaleX: 1, scaleY: 1 })
     setAvnacShapeMeta(obj, { ...meta, starPoints: n })
     obj.setCoords()
     canvas.requestRenderAll()
@@ -1128,8 +1058,80 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
         ref={viewportRef}
         className="flex h-full min-h-[280px] min-w-0 items-center justify-center overflow-auto rounded-2xl bg-[var(--surface-subtle)] p-4 sm:p-6"
       >
-        <div className="flex flex-col items-center justify-center">
-          <div className="relative inline-block">
+        <div className="flex w-full min-w-0 flex-col items-center justify-center gap-3">
+          <div
+            ref={selectionToolsRef}
+            className="pointer-events-auto relative z-30 flex min-h-11 w-full max-w-full shrink-0 justify-center px-1 sm:px-2"
+          >
+            {ready && textToolbarValues ? (
+              <TextFormatToolbar
+                values={textToolbarValues}
+                onChange={onTextFormatChange}
+              />
+            ) : null}
+            {ready && !textToolbarValues && shapeToolbarModel ? (
+              <ShapeOptionsToolbar
+                meta={shapeToolbarModel.meta}
+                paintValue={shapeToolbarModel.paint}
+                onPaintChange={applyPaintToSelection}
+                onPolygonSides={applyPolygonSides}
+                onStarPoints={applyStarPoints}
+                onArrowLineStyle={applyArrowLineStyle}
+                onArrowRoundedEnds={applyArrowRoundedEnds}
+                onArrowStrokeWidth={applyArrowStrokeWidth}
+                onArrowPathType={applyArrowPathType}
+              />
+            ) : null}
+            {ready &&
+            !textToolbarValues &&
+            !shapeToolbarModel &&
+            canvasBodySelected ? (
+              <div ref={backgroundPopoverAnchorRef} className="relative">
+                <div className="flex items-center rounded-full border border-black/[0.08] bg-white/90 px-2 py-1 shadow-[0_4px_20px_rgba(0,0,0,0.08)] backdrop-blur-md">
+                  <button
+                    type="button"
+                    className={backgroundTopBtn(false)}
+                    onClick={() => setBgPopoverOpen((o) => !o)}
+                    aria-label="Page background"
+                    aria-expanded={bgPopoverOpen}
+                    aria-haspopup="dialog"
+                    title="Background"
+                  >
+                    <HugeiconsIcon
+                      icon={BackgroundIcon}
+                      size={20}
+                      strokeWidth={1.75}
+                    />
+                    <span
+                      className="h-5 w-5 shrink-0 rounded-md border border-black/15 shadow-inner"
+                      style={bgValueToSwatch(bgValue)}
+                    />
+                    <span className="pr-0.5">Background</span>
+                  </button>
+                </div>
+                {bgPopoverOpen ? (
+                  <div
+                    ref={backgroundPopoverPanelRef}
+                    className={[
+                      'absolute left-1/2 z-[60]',
+                      backgroundPopoverOpenUpward
+                        ? 'bottom-full mb-2'
+                        : 'top-full mt-2',
+                    ].join(' ')}
+                    style={{
+                      transform: `translateX(calc(-50% + ${backgroundPopoverShiftX}px))`,
+                    }}
+                  >
+                    <BackgroundPopover
+                      value={bgValue}
+                      onChange={(v) => onBackgroundPicked(v)}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+          <div className="relative z-0 inline-block">
             <div
               ref={artboardFrameRef}
               className="rounded-sm shadow-[0_4px_24px_rgba(0,0,0,0.08)]"
@@ -1237,100 +1239,6 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
         </div>
       ) : null}
 
-      {ready && canvasBodySelected && backgroundBarLayout ? (
-        <div
-          ref={backgroundBarRef}
-          className="pointer-events-auto fixed z-50"
-          style={{
-            left: Math.round(backgroundBarLayout.left),
-            top: Math.round(backgroundBarLayout.top),
-            transform: 'translate3d(-50%, -100%, 0)',
-          }}
-        >
-          <div ref={backgroundPopoverAnchorRef} className="relative">
-            <div className="flex items-center rounded-full border border-black/[0.08] bg-white/90 px-2 py-1 shadow-[0_4px_20px_rgba(0,0,0,0.08)] backdrop-blur-md">
-              <button
-                type="button"
-                className={backgroundTopBtn(false)}
-                onClick={() => setBgPopoverOpen((o) => !o)}
-                aria-label="Page background"
-                aria-expanded={bgPopoverOpen}
-                aria-haspopup="dialog"
-                title="Background"
-              >
-                <HugeiconsIcon
-                  icon={BackgroundIcon}
-                  size={20}
-                  strokeWidth={1.75}
-                />
-                <span
-                  className="h-5 w-5 shrink-0 rounded-md border border-black/15 shadow-inner"
-                  style={bgValueToSwatch(bgValue)}
-                />
-                <span className="pr-0.5">Background</span>
-              </button>
-            </div>
-            {bgPopoverOpen ? (
-              <div
-                ref={backgroundPopoverPanelRef}
-                className={[
-                  'absolute left-1/2 z-[60]',
-                  backgroundPopoverOpenUpward ? 'bottom-full mb-2' : 'top-full mt-2',
-                ].join(' ')}
-                style={{
-                  transform: `translateX(calc(-50% + ${backgroundPopoverShiftX}px))`,
-                }}
-              >
-                <BackgroundPopover
-                  value={bgValue}
-                  onChange={(v) => onBackgroundPicked(v)}
-                />
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-
-      {textToolbarLayout && textToolbarValues ? (
-        <div
-          ref={textToolbarRef}
-          className="pointer-events-auto fixed z-50"
-          style={{
-            left: Math.round(textToolbarLayout.left),
-            top: Math.round(textToolbarLayout.top - TEXT_TOOLBAR_GAP_PX),
-            transform: 'translate3d(-50%, -100%, 0)',
-          }}
-        >
-          <TextFormatToolbar
-            values={textToolbarValues}
-            onChange={onTextFormatChange}
-          />
-        </div>
-      ) : null}
-
-      {shapeToolbarLayout && shapeToolbarModel ? (
-        <div
-          ref={shapeToolbarRef}
-          className="pointer-events-auto fixed z-50"
-          style={{
-            left: Math.round(shapeToolbarLayout.left),
-            top: Math.round(shapeToolbarLayout.top - TEXT_TOOLBAR_GAP_PX),
-            transform: 'translate3d(-50%, -100%, 0)',
-          }}
-        >
-          <ShapeOptionsToolbar
-            meta={shapeToolbarModel.meta}
-            paintValue={shapeToolbarModel.paint}
-            onPaintChange={applyPaintToSelection}
-            onPolygonSides={applyPolygonSides}
-            onStarPoints={applyStarPoints}
-            onArrowLineStyle={applyArrowLineStyle}
-            onArrowRoundedEnds={applyArrowRoundedEnds}
-            onArrowStrokeWidth={applyArrowStrokeWidth}
-            onArrowPathType={applyArrowPathType}
-          />
-        </div>
-      ) : null}
     </div>
   )
 },
