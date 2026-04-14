@@ -8,16 +8,10 @@ import {
   TextItalicIcon,
   TextUnderlineIcon,
 } from '@hugeicons/core-free-icons'
-import {
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { GOOGLE_FONT_FAMILIES } from '../data/google-font-families'
 import { loadGoogleFontFamily } from '../lib/load-google-font'
+import type { BgValue } from './background-popover'
 import {
   FloatingToolbarDivider,
   FloatingToolbarShell,
@@ -25,11 +19,12 @@ import {
   floatingToolbarPopoverClass,
 } from './floating-toolbar-shell'
 import FontSizeScrubber from './font-size-scrubber'
+import PaintPopoverControl from './paint-popover-control'
 
 export type TextFormatToolbarValues = {
   fontFamily: string
   fontSize: number
-  fill: string
+  fillStyle: BgValue
   textAlign: 'left' | 'center' | 'right' | 'justify'
   bold: boolean
   italic: boolean
@@ -57,7 +52,6 @@ export default function TextFormatToolbar({
   const rootRef = useRef<HTMLDivElement>(null)
   const fontTriggerWrapRef = useRef<HTMLDivElement>(null)
   const fontMenuRef = useRef<HTMLDivElement>(null)
-  const colorInputId = useId()
 
   useEffect(() => {
     if (!fontOpen) return
@@ -215,27 +209,13 @@ export default function TextFormatToolbar({
 
         <div className="mx-0.5 h-5 w-px shrink-0 bg-black/10" aria-hidden />
 
-        <button
-          type="button"
-          className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg outline-none hover:bg-black/[0.06]"
-          title="Text color"
-          aria-label="Text color"
-          onClick={() => document.getElementById(colorInputId)?.click()}
-        >
-          <span
-            className="h-5 w-5 rounded-md border border-black/15 shadow-inner"
-            style={{ backgroundColor: values.fill }}
-          />
-          <input
-            id={colorInputId}
-            type="color"
-            value={values.fill}
-            onChange={(e) => onChange({ fill: e.target.value })}
-            className="sr-only"
-            tabIndex={-1}
-            aria-hidden
-          />
-        </button>
+        <PaintPopoverControl
+          compact
+          value={values.fillStyle}
+          onChange={(fillStyle) => onChange({ fillStyle })}
+          title="Text color and gradient"
+          ariaLabel="Text color and gradient"
+        />
 
         <div className="mx-0.5 h-5 w-px shrink-0 bg-black/10" aria-hidden />
 
