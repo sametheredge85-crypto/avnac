@@ -1,12 +1,14 @@
 import {
   Group,
   LayoutManager,
-  Line,
+  Path,
   Point,
   Polygon,
+  util,
   type XY,
 } from 'fabric'
-import type { ArrowLineStyle } from './avnac-shape-meta'
+import type { ArrowLineStyle, ArrowPathType } from './avnac-shape-meta'
+import { getAvnacShapeMeta } from './avnac-shape-meta'
 
 export type ArrowOpts = {
   strokeWidth: number
@@ -14,6 +16,7 @@ export type ArrowOpts = {
   color: string
   lineStyle?: ArrowLineStyle
   roundedEnds?: boolean
+  pathType?: ArrowPathType
 }
 
 function headGeometry(
@@ -46,11 +49,33 @@ function shaftStrokeLineCap(
   return roundedEnds ? 'round' : 'butt'
 }
 
+function curveBulge(
+  L: number,
+  strokeW: number,
+  pathType: ArrowPathType | undefined,
+): number {
+  if (pathType !== 'curved') return 0
+  return -Math.min(L * 0.24, Math.max(strokeW * 4.5, 14))
+}
+
+function shaftPathD(shaftLen: number, bulge: number): string {
+  if (bulge === 0) {
+    return `M 0 0 L ${shaftLen} 0`
+  }
+  const mid = shaftLen / 2
+  return `M 0 0 Q ${mid} ${bulge} ${shaftLen} 0`
+}
+
+function headTangentAngleDeg(shaftLen: number, bulge: number): number {
+  if (bulge === 0) return 0
+  return (Math.atan2(-2 * bulge, shaftLen) * 180) / Math.PI
+}
+
 export function getArrowParts(
   g: Group,
-): { shaft: Line; head: Polygon } | null {
+): { shaft: Path; head: Polygon } | null {
   const objs = g.getObjects()
-  const shaft = objs.find((o) => o instanceof Line) as Line | undefined
+  const shaft = objs.find((o) => o instanceof Path) as Path | undefined
   const head = objs.find((o) => o instanceof Polygon) as Polygon | undefined
   if (shaft && head) return { shaft, head }
   return null
@@ -75,7 +100,14 @@ export function createArrowGroup(
   y2: number,
   opts: ArrowOpts,
 ): Group {
-  const { strokeWidth: strokeW, headFrac, color, lineStyle, roundedEnds } = opts
+  const {
+    strokeWidth: strokeW,
+    headFrac,
+    color,
+    lineStyle,
+    roundedEnds,
+    pathType,
+  } = opts
   const dx = x2 - x1
   const dy = y2 - y1
   const L = Math.max(Math.hypot(dx, dy), 1)
@@ -87,8 +119,11 @@ export function createArrowGroup(
 
   const shaftLen = hf < 0.01 ? L : Math.max(L - headLen, 1)
   const cap = shaftStrokeLineCap(lineStyle, roundedEnds)
+  const bulge = curveBulge(L, strokeW, pathType)
+  const pathD = shaftPathD(shaftLen, bulge)
+  const headTilt = headTangentAngleDeg(shaftLen, bulge)
 
-  const shaft = new mod.Line([0, 0, shaftLen, 0], {
+  const shaft = new mod.Path(pathD, {
     left: -L / 2,
     top: 0,
     originX: 'left',
@@ -116,6 +151,7 @@ export function createArrowGroup(
       top: 0,
       originX: 'left',
       originY: 'center',
+      angle: headTilt,
       fill: color,
       stroke: null,
       strokeWidth: 0,
@@ -127,7 +163,7 @@ export function createArrowGroup(
 
   const children = head ? [shaft, head] : [shaft]
 
-  const g = new mod.Group(children, {
+  return new mod.Group(children, {
     left: cx,
     top: cy,
     angle: angleDeg,
@@ -138,8 +174,6 @@ export function createArrowGroup(
     objectCaching: false,
     layoutManager: new LayoutManager(),
   })
-
-  return g
 }
 
 export function layoutArrowGroup(
@@ -153,7 +187,14 @@ export function layoutArrowGroup(
   const parts = getArrowParts(group)
   if (!parts) return
 
-  const { strokeWidth: strokeW, headFrac, color, lineStyle, roundedEnds } = opts
+  const {
+    strokeWidth: strokeW,
+    headFrac,
+    color,
+    lineStyle,
+    roundedEnds,
+    pathType,
+  } = opts
   const dx = x2 - x1
   const dy = y2 - y1
   const L = Math.max(Math.hypot(dx, dy), 1)
@@ -165,12 +206,13 @@ export function layoutArrowGroup(
 
   const shaftLen = hf < 0.01 ? L : Math.max(L - headLen, 1)
   const cap = shaftStrokeLineCap(lineStyle, roundedEnds)
+  const bulge = curveBulge(L, strokeW, pathType)
+  const pathD = shaftPathD(shaftLen, bulge)
+  const headTilt = headTangentAngleDeg(shaftLen, bulge)
 
+  parts.shaft._setPath(pathD, false)
+  parts.shaft.setDimensions()
   parts.shaft.set({
-    x1: 0,
-    y1: 0,
-    x2: shaftLen,
-    y2: 0,
     left: -L / 2,
     top: 0,
     originX: 'left',
@@ -198,12 +240,12 @@ export function layoutArrowGroup(
       top: 0,
       originX: 'left',
       originY: 'center',
+      angle: headTilt,
       fill: color,
       stroke: null,
       strokeWidth: 0,
       scaleX: 1,
       scaleY: 1,
-      angle: 0,
       visible: true,
     })
     parts.head.setDimensions()
@@ -231,6 +273,15 @@ export function layoutArrowGroup(
 export function arrowTailTipLocal(
   g: Group,
 ): { tail: Point; tip: Point } | null {
+  const meta = getAvnacShapeMeta(g)
+  if (meta?.kind === 'arrow' && meta.arrowEndpoints) {
+    const inv = util.invertTransform(g.calcTransformMatrix())
+    const { x1, y1, x2, y2 } = meta.arrowEndpoints
+    return {
+      tail: util.transformPoint(new Point(x1, y1), inv),
+      tip: util.transformPoint(new Point(x2, y2), inv),
+    }
+  }
   const parts = getArrowParts(g)
   if (!parts) return null
   const shaftW = parts.shaft.width ?? 0
