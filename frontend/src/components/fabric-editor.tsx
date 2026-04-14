@@ -19,6 +19,7 @@ import {
   installCanvaArrowControls,
   installCanvaLineControls,
   ensureAvnacArrowEndpoints,
+  syncAvnacArrowCurveControlVisibility,
   syncAvnacArrowEndpointsFromGeometry,
 } from '../lib/fabric-canva-line-arrow-controls'
 import {
@@ -256,6 +257,9 @@ export default function FabricEditor() {
         ? arrowDisplayColor(obj)
         : undefined
     setShapeToolbarModel({ meta: { ...meta }, arrowStrokeColor })
+    if (meta.kind === 'arrow' && obj instanceof mod.Group) {
+      syncAvnacArrowCurveControlVisibility(obj)
+    }
     obj.setCoords()
     const br = obj.getBoundingRect()
     const canvasEl = canvas.upperCanvasEl
@@ -859,6 +863,8 @@ export default function FabricEditor() {
       lineStyle: style,
       roundedEnds: m?.arrowRoundedEnds,
       pathType: m?.arrowPathType ?? 'straight',
+      curveBulge: m?.arrowCurveBulge,
+      curveT: m?.arrowCurveT,
     })
     setAvnacShapeMeta(obj, { ...m, arrowLineStyle: style })
     canvas.requestRenderAll()
@@ -886,6 +892,8 @@ export default function FabricEditor() {
       lineStyle: m?.arrowLineStyle,
       roundedEnds: rounded,
       pathType: m?.arrowPathType ?? 'straight',
+      curveBulge: m?.arrowCurveBulge,
+      curveT: m?.arrowCurveT,
     })
     setAvnacShapeMeta(obj, { ...m, arrowRoundedEnds: rounded })
     canvas.requestRenderAll()
@@ -913,6 +921,8 @@ export default function FabricEditor() {
       lineStyle: m?.arrowLineStyle,
       roundedEnds: m?.arrowRoundedEnds,
       pathType: m?.arrowPathType ?? 'straight',
+      curveBulge: m?.arrowCurveBulge,
+      curveT: m?.arrowCurveT,
     })
     setAvnacShapeMeta(obj, { ...m, arrowStrokeWidth: strokeW })
     canvas.requestRenderAll()
@@ -940,8 +950,17 @@ export default function FabricEditor() {
       lineStyle: m?.arrowLineStyle,
       roundedEnds: m?.arrowRoundedEnds,
       pathType,
+      curveBulge: pathType === 'curved' ? m?.arrowCurveBulge : undefined,
+      curveT: pathType === 'curved' ? m?.arrowCurveT : undefined,
     })
-    setAvnacShapeMeta(obj, { ...m, arrowPathType: pathType })
+    setAvnacShapeMeta(obj, {
+      ...m,
+      arrowPathType: pathType,
+      ...(pathType === 'straight'
+        ? { arrowCurveBulge: undefined, arrowCurveT: undefined }
+        : {}),
+    })
+    syncAvnacArrowCurveControlVisibility(obj)
     canvas.requestRenderAll()
     syncShapeToolbar()
   }
@@ -1068,6 +1087,7 @@ export default function FabricEditor() {
             <ShapesPopover
               open={shapesPopoverOpen}
               disabled={!ready}
+              anchorRef={shapeToolSplitRef}
               onClose={() => setShapesPopoverOpen(false)}
               onPick={(k) => {
                 setShapesQuickAddKind(k)
