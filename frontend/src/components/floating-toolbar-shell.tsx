@@ -48,5 +48,10 @@ export function floatingToolbarIconButton(
   return active ? `${base} bg-black/[0.08] text-neutral-900` : base
 }
 
-export const floatingToolbarPopoverClass =
-  'z-50 overflow-hidden rounded-xl border border-black/[0.08] bg-white shadow-[0_12px_40px_rgba(0,0,0,0.12)]'
+const floatingToolbarPopoverSurface =
+  'z-50 rounded-xl border border-black/[0.08] bg-white shadow-[0_12px_40px_rgba(0,0,0,0.12)]'
+
+/** Use when the panel has nested flyouts; `overflow-hidden` would clip them. */
+export const floatingToolbarPopoverMenuClass = floatingToolbarPopoverSurface
+
+export const floatingToolbarPopoverClass = `${floatingToolbarPopoverSurface} overflow-hidden`
