@@ -25,6 +25,7 @@ import {
   floatingToolbarIconButton,
   floatingToolbarPopoverClass,
 } from './floating-toolbar-shell'
+import CornerRadiusToolbarControl from './corner-radius-toolbar-control'
 import EditorRangeSlider from './editor-range-slider'
 import PaintPopoverControl from './paint-popover-control'
 
@@ -38,6 +39,9 @@ type Props = {
   onArrowRoundedEnds: (rounded: boolean) => void
   onArrowStrokeWidth: (w: number) => void
   onArrowPathType: (pathType: ArrowPathType) => void
+  rectCornerRadius?: number
+  rectCornerRadiusMax?: number
+  onRectCornerRadius?: (px: number) => void
   footerSlot?: ReactNode
 }
 
@@ -81,6 +85,9 @@ export default function ShapeOptionsToolbar({
   onArrowRoundedEnds,
   onArrowStrokeWidth,
   onArrowPathType,
+  rectCornerRadius,
+  rectCornerRadiusMax,
+  onRectCornerRadius,
   footerSlot,
 }: Props) {
   const [strokePanelOpen, setStrokePanelOpen] = useState(false)
@@ -115,7 +122,41 @@ export default function ShapeOptionsToolbar({
     return () => document.removeEventListener('mousedown', onDoc)
   }, [strokePanelOpen, lineTypePanelOpen])
 
-  if (meta.kind === 'rect' || meta.kind === 'ellipse') {
+  if (meta.kind === 'rect') {
+    return (
+      <FloatingToolbarShell role="toolbar" aria-label="Shape options">
+        <div className="flex items-center py-1 pl-2 pr-3">
+          <PaintPopoverControl
+            compact
+            value={paintValue}
+            onChange={onPaintChange}
+            title="Fill color and gradient"
+            ariaLabel="Fill color and gradient"
+          />
+          {onRectCornerRadius !== undefined &&
+          rectCornerRadius !== undefined &&
+          rectCornerRadiusMax !== undefined ? (
+            <>
+              <FloatingToolbarDivider />
+              <CornerRadiusToolbarControl
+                value={rectCornerRadius}
+                max={rectCornerRadiusMax}
+                onChange={onRectCornerRadius}
+              />
+            </>
+          ) : null}
+          {footerSlot ? (
+            <>
+              <FloatingToolbarDivider />
+              {footerSlot}
+            </>
+          ) : null}
+        </div>
+      </FloatingToolbarShell>
+    )
+  }
+
+  if (meta.kind === 'ellipse') {
     return (
       <FloatingToolbarShell role="toolbar" aria-label="Shape options">
         <div className="flex items-center py-1 pl-2 pr-3">
