@@ -132,84 +132,113 @@ const CanvasElementToolbar = forwardRef<HTMLDivElement, CanvasElementToolbarProp
             ref={moreWrapRef}
             className="relative flex items-stretch overflow-visible"
           >
-            {canGroup ? (
+            {locked ? (
+              <button
+                type="button"
+                className={[
+                  floatingToolbarIconButton(true, { wide: true }),
+                  'gap-1.5 px-2.5',
+                ].join(' ')}
+                title="Unlock"
+                aria-label="Unlock"
+                aria-pressed={true}
+                onClick={onToggleLock}
+              >
+                <HugeiconsIcon
+                  icon={SquareUnlock01Icon}
+                  size={18}
+                  strokeWidth={1.75}
+                />
+                <span className="text-[13px] font-medium">Unlock</span>
+              </button>
+            ) : (
               <>
+                {canGroup ? (
+                  <>
+                    <button
+                      type="button"
+                      className={[
+                        floatingToolbarIconButton(false, { wide: true }),
+                        'gap-1.5 px-2.5',
+                      ].join(' ')}
+                      title="Group selection (Cmd/Ctrl+G)"
+                      aria-label="Group selection"
+                      onClick={onGroup}
+                    >
+                      <HugeiconsIcon
+                        icon={GroupItemsIcon}
+                        size={18}
+                        strokeWidth={1.75}
+                      />
+                      <span className="text-[13px] font-medium">Group</span>
+                    </button>
+                    <FloatingToolbarDivider />
+                  </>
+                ) : null}
+                {canUngroup ? (
+                  <>
+                    <button
+                      type="button"
+                      className={[
+                        floatingToolbarIconButton(false, { wide: true }),
+                        'gap-1.5 px-2.5',
+                      ].join(' ')}
+                      title="Ungroup (Cmd/Ctrl+Shift+G)"
+                      aria-label="Ungroup selection"
+                      onClick={onUngroup}
+                    >
+                      <HugeiconsIcon
+                        icon={UngroupItemsIcon}
+                        size={18}
+                        strokeWidth={1.75}
+                      />
+                      <span className="text-[13px] font-medium">Ungroup</span>
+                    </button>
+                    <FloatingToolbarDivider />
+                  </>
+                ) : null}
                 <button
                   type="button"
-                  className={[
-                    floatingToolbarIconButton(false, { wide: true }),
-                    'gap-1.5 px-2.5',
-                  ].join(' ')}
-                  title="Group selection (Cmd/Ctrl+G)"
-                  aria-label="Group selection"
-                  onClick={onGroup}
+                  className={floatingToolbarIconButton(false)}
+                  title="Duplicate"
+                  aria-label="Duplicate"
+                  onClick={onDuplicate}
                 >
                   <HugeiconsIcon
-                    icon={GroupItemsIcon}
+                    icon={Layers01Icon}
                     size={18}
                     strokeWidth={1.75}
                   />
-                  <span className="text-[13px] font-medium">Group</span>
                 </button>
-                <FloatingToolbarDivider />
-              </>
-            ) : null}
-            {canUngroup ? (
-              <>
                 <button
                   type="button"
-                  className={[
-                    floatingToolbarIconButton(false, { wide: true }),
-                    'gap-1.5 px-2.5',
-                  ].join(' ')}
-                  title="Ungroup (Cmd/Ctrl+Shift+G)"
-                  aria-label="Ungroup selection"
-                  onClick={onUngroup}
+                  className={floatingToolbarIconButton(false)}
+                  title="Lock"
+                  aria-label="Lock"
+                  aria-pressed={false}
+                  onClick={onToggleLock}
                 >
                   <HugeiconsIcon
-                    icon={UngroupItemsIcon}
+                    icon={SquareLock01Icon}
                     size={18}
                     strokeWidth={1.75}
                   />
-                  <span className="text-[13px] font-medium">Ungroup</span>
+                </button>
+                <button
+                  type="button"
+                  className={floatingToolbarIconButton(false)}
+                  title="Delete"
+                  aria-label="Delete"
+                  onClick={onDelete}
+                >
+                  <HugeiconsIcon
+                    icon={Delete02Icon}
+                    size={18}
+                    strokeWidth={1.75}
+                  />
                 </button>
                 <FloatingToolbarDivider />
-              </>
-            ) : null}
-            <button
-              type="button"
-              className={floatingToolbarIconButton(false)}
-              title="Duplicate"
-              aria-label="Duplicate"
-              onClick={onDuplicate}
-            >
-              <HugeiconsIcon icon={Layers01Icon} size={18} strokeWidth={1.75} />
-            </button>
-            <button
-              type="button"
-              className={floatingToolbarIconButton(locked)}
-              title={locked ? 'Unlock' : 'Lock'}
-              aria-label={locked ? 'Unlock' : 'Lock'}
-              aria-pressed={locked}
-              onClick={onToggleLock}
-            >
-              <HugeiconsIcon
-                icon={locked ? SquareLock01Icon : SquareUnlock01Icon}
-                size={18}
-                strokeWidth={1.75}
-              />
-            </button>
-            <button
-              type="button"
-              className={floatingToolbarIconButton(false)}
-              title="Delete"
-              aria-label="Delete"
-              onClick={onDelete}
-            >
-              <HugeiconsIcon icon={Delete02Icon} size={18} strokeWidth={1.75} />
-            </button>
-            <FloatingToolbarDivider />
-            <div className="relative flex items-center pr-1">
+                <div className="relative flex items-center pr-1">
               <button
                 type="button"
                 className={floatingToolbarIconButton(moreOpen)}
@@ -416,7 +445,9 @@ const CanvasElementToolbar = forwardRef<HTMLDivElement, CanvasElementToolbarProp
                 </div>
               </div>
               ) : null}
-            </div>
+                </div>
+              </>
+            )}
           </div>
         </FloatingToolbarShell>
       </div>
