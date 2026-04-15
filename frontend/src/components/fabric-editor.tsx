@@ -74,11 +74,19 @@ import BackgroundPopover, {
   type BgValue,
 } from './background-popover'
 import CanvasZoomSlider from './canvas-zoom-slider'
+import CanvasElementToolbar, {
+  type CanvasAlignKind,
+} from './canvas-element-toolbar'
+import { getAvnacLocked, setAvnacLocked } from '../lib/avnac-object-lock'
 
 const ARTBOARD_W = 4000
 const ARTBOARD_H = 4000
+const ARTBOARD_ALIGN_PAD = 32
+const ARTBOARD_ALIGN_ALREADY_EPS = 2
 const ZOOM_MIN_PCT = 5
 const ZOOM_MAX_PCT = 100
+
+const OBJECT_SERIAL_KEYS = ['avnacShape', 'avnacLocked'] as const
 
 const DEFAULT_PAINT: BgValue = { type: 'solid', color: '#262626' }
 
@@ -87,6 +95,24 @@ const FONT_SIZE = Math.round(ARTBOARD_W * 0.04)
 const RECT_W = Math.round(ARTBOARD_W * 0.2)
 const RECT_H = Math.round(ARTBOARD_H * 0.12)
 const RECT_RX = Math.round(ARTBOARD_W * 0.004)
+
+function artboardAlignAlreadySatisfied(br: {
+  left: number
+  top: number
+  width: number
+  height: number
+}): Record<CanvasAlignKind, boolean> {
+  const pad = ARTBOARD_ALIGN_PAD
+  const eps = ARTBOARD_ALIGN_ALREADY_EPS
+  return {
+    left: Math.abs(br.left - pad) <= eps,
+    centerH: Math.abs(br.left + br.width / 2 - ARTBOARD_W / 2) <= eps,
+    right: Math.abs(br.left + br.width - (ARTBOARD_W - pad)) <= eps,
+    top: Math.abs(br.top - pad) <= eps,
+    centerV: Math.abs(br.top + br.height / 2 - ARTBOARD_H / 2) <= eps,
+    bottom: Math.abs(br.top + br.height - (ARTBOARD_H - pad)) <= eps,
+  }
+}
 
 const QUICK_SHAPE_TITLE: Record<ShapesQuickAddKind, string> = {
   generic: 'Add rectangle',
@@ -171,6 +197,8 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
   const canvasElRef = useRef<HTMLCanvasElement>(null)
   const artboardFrameRef = useRef<HTMLDivElement>(null)
   const canvasZoomRef = useRef<HTMLDivElement>(null)
+  const elementToolbarRef = useRef<HTMLDivElement>(null)
+  const artboardClusterRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const zoomUserAdjustedRef = useRef(false)
   const selectionToolsRef = useRef<HTMLDivElement>(null)
@@ -186,7 +214,7 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
   const [selectedPaint, setSelectedPaint] = useState<BgValue>(DEFAULT_PAINT)
   const [hasObjectSelected, setHasObjectSelected] = useState(false)
   const [canvasBodySelected, setCanvasBodySelected] = useState(false)
-  const [, selectionTick] = useReducer((n: number) => n + 1, 0)
+  const [selectionRev, selectionTick] = useReducer((n: number) => n + 1, 0)
   const [textToolbarValues, setTextToolbarValues] =
     useState<TextFormatToolbarValues | null>(null)
   const [shapesPopoverOpen, setShapesPopoverOpen] = useState(false)
@@ -200,6 +228,12 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     vertical: false,
     horizontal: false,
   })
+  const [artboardHovered, setArtboardHovered] = useState(false)
+  const [elementToolbarLayout, setElementToolbarLayout] = useState<{
+    left: number
+    top: number
+    placement: 'above' | 'below'
+  } | null>(null)
 
   const backgroundPopoverAnchorRef = useRef<HTMLDivElement>(null)
   const backgroundPopoverPanelRef = useRef<HTMLDivElement>(null)
@@ -444,6 +478,68 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     fitArtboardToViewport()
   }, [fitArtboardToViewport])
 
+  const updateElementToolbarLayout = useCallback(() => {
+    const canvas = fabricCanvasRef.current
+    const frame = artboardFrameRef.current
+    if (!canvas || !frame || !ready) {
+      setElementToolbarLayout(null)
+      return
+    }
+    const active = canvas.getActiveObject()
+    if (!active) {
+      setElementToolbarLayout(null)
+      return
+    }
+    if ('isEditing' in active && (active as IText).isEditing) {
+      setElementToolbarLayout(null)
+      return
+    }
+    const br = active.getBoundingRect()
+    const cw = canvas.getWidth()
+    const ch = canvas.getHeight()
+    const fw = frame.offsetWidth
+    if (cw <= 0 || ch <= 0 || fw <= 0) {
+      setElementToolbarLayout(null)
+      return
+    }
+    const sx = fw / cw
+    const sy = frame.offsetHeight / ch
+    const centerX = (br.left + br.width / 2) * sx
+    const topY = br.top * sy
+    const bottomY = (br.top + br.height) * sy
+
+    const cluster = artboardClusterRef.current
+    const viewport = viewportRef.current
+    const estToolbarH = 48
+    const gap = 10
+    const pad = 8
+    let placement: 'above' | 'below' = 'above'
+    let anchorY = topY
+    if (cluster && viewport) {
+      const cr = cluster.getBoundingClientRect()
+      const vr = viewport.getBoundingClientRect()
+      const anchorTopScreen = cr.top + topY
+      const anchorBottomScreen = cr.top + bottomY
+      const spaceAbove = anchorTopScreen - vr.top - pad
+      const spaceBelow = vr.bottom - anchorBottomScreen - pad
+      if (spaceAbove >= estToolbarH + gap) {
+        placement = 'above'
+        anchorY = topY
+      } else if (spaceBelow >= estToolbarH + gap) {
+        placement = 'below'
+        anchorY = bottomY
+      } else {
+        placement = spaceAbove >= spaceBelow ? 'above' : 'below'
+        anchorY = placement === 'above' ? topY : bottomY
+      }
+    }
+
+    setElementToolbarLayout({ left: centerX, top: anchorY, placement })
+  }, [ready])
+
+  const refreshElementToolbarLayoutRef = useRef(updateElementToolbarLayout)
+  refreshElementToolbarLayoutRef.current = updateElementToolbarLayout
+
   useEffect(() => {
     const canvas = fabricCanvasRef.current
     const mod = fabricModRef.current
@@ -615,6 +711,7 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     if (!canvas || !mod || !ready) return
 
     const bump = () => {
+      refreshElementToolbarLayoutRef.current()
       syncTextToolbar()
       syncShapeToolbar()
     }
@@ -669,6 +766,7 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     const vp = viewportRef.current
     if (!vp || !ready) return
     const bump = () => {
+      refreshElementToolbarLayoutRef.current()
       syncTextToolbar()
       syncShapeToolbar()
     }
@@ -685,7 +783,30 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
   useLayoutEffect(() => {
     if (!ready) return
     syncShapeToolbar()
-  }, [ready, selectionTick, zoomPercent, syncShapeToolbar])
+  }, [ready, selectionRev, zoomPercent, syncShapeToolbar])
+
+  useLayoutEffect(() => {
+    if (!ready) return
+    updateElementToolbarLayout()
+  }, [
+    ready,
+    selectionRev,
+    zoomPercent,
+    hasObjectSelected,
+    updateElementToolbarLayout,
+  ])
+
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas || !ready) return
+    const ed = () => updateElementToolbarLayout()
+    canvas.on('text:editing:entered', ed)
+    canvas.on('text:editing:exited', ed)
+    return () => {
+      canvas.off('text:editing:entered', ed)
+      canvas.off('text:editing:exited', ed)
+    }
+  }, [ready, updateElementToolbarLayout])
 
   useEffect(() => {
     if (!shapesPopoverOpen) return
@@ -701,7 +822,9 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
   useEffect(() => {
     if (!bgPopoverOpen) return
     const onDoc = (e: MouseEvent) => {
-      if (selectionToolsRef.current?.contains(e.target as Node)) return
+      const n = e.target as Node
+      if (selectionToolsRef.current?.contains(n)) return
+      if (elementToolbarRef.current?.contains(n)) return
       setBgPopoverOpen(false)
     }
     document.addEventListener('mousedown', onDoc)
@@ -722,6 +845,7 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
       if (selectionToolsRef.current?.contains(t)) return
       if (bottomToolbarRef.current?.contains(t)) return
       if (canvasZoomRef.current?.contains(t)) return
+      if (elementToolbarRef.current?.contains(t)) return
       if (isEventOnFabricCanvas(c, t)) return
 
       if (c.getActiveObject()) {
@@ -1078,6 +1202,151 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     syncShapeToolbar()
   }
 
+  const duplicateElement = useCallback(async () => {
+    const canvas = fabricCanvasRef.current
+    const mod = fabricModRef.current
+    if (!canvas || !mod) return
+    const active = canvas.getActiveObject()
+    if (!active) return
+    if ('isEditing' in active && (active as IText).isEditing) return
+
+    const dup = await active.clone([...OBJECT_SERIAL_KEYS])
+    dup.set({ left: (active.left ?? 0) + 32, top: (active.top ?? 0) + 32 })
+    const clearLock = (o: FabricObject) => {
+      if (getAvnacLocked(o)) setAvnacLocked(o, false, mod)
+    }
+    if (mod.ActiveSelection && dup instanceof mod.ActiveSelection) {
+      dup.getObjects().forEach(clearLock)
+    } else {
+      clearLock(dup as FabricObject)
+    }
+    canvas.discardActiveObject()
+    canvas.add(dup)
+    canvas.setActiveObject(dup)
+    canvas.requestRenderAll()
+    selectionTick()
+  }, [])
+
+  const toggleElementLock = useCallback(() => {
+    const canvas = fabricCanvasRef.current
+    const mod = fabricModRef.current
+    if (!canvas || !mod) return
+    const active = canvas.getActiveObject()
+    if (!active) return
+    if (mod.ActiveSelection && active instanceof mod.ActiveSelection) {
+      const objs = active.getObjects()
+      const anyUnlocked = objs.some((o) => !getAvnacLocked(o))
+      const nextLocked = anyUnlocked
+      objs.forEach((o) => setAvnacLocked(o, nextLocked, mod))
+    } else {
+      setAvnacLocked(active, !getAvnacLocked(active), mod)
+    }
+    canvas.requestRenderAll()
+    selectionTick()
+  }, [])
+
+  const copyElementToClipboard = useCallback(async () => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    const objs = canvas.getActiveObjects()
+    if (objs.length === 0) return
+    const objects = objs.map((o) =>
+      o.toObject([...OBJECT_SERIAL_KEYS] as unknown as string[]),
+    )
+    const payload = JSON.stringify({ avnacClip: true, v: 1, objects })
+    try {
+      await navigator.clipboard.writeText(payload)
+    } catch {
+      /* clipboard may be blocked */
+    }
+  }, [])
+
+  const pasteFromClipboard = useCallback(async () => {
+    const canvas = fabricCanvasRef.current
+    const mod = fabricModRef.current
+    if (!canvas || !mod) return
+    let text: string
+    try {
+      text = await navigator.clipboard.readText()
+    } catch {
+      return
+    }
+    let parsed: { avnacClip?: boolean; objects?: unknown[] }
+    try {
+      parsed = JSON.parse(text) as { avnacClip?: boolean; objects?: unknown[] }
+    } catch {
+      return
+    }
+    if (!parsed.avnacClip || !Array.isArray(parsed.objects)) return
+
+    const objs = (await mod.util.enlivenObjects(
+      parsed.objects as object[],
+      {},
+    )) as FabricObject[]
+
+    const dx = 32
+    const dy = 32
+    objs.forEach((o) => {
+      o.set({
+        left: (o.left ?? 0) + dx,
+        top: (o.top ?? 0) + dy,
+      })
+      canvas.add(o)
+    })
+    canvas.discardActiveObject()
+    if (objs.length === 1) {
+      canvas.setActiveObject(objs[0]!)
+    } else if (objs.length > 1) {
+      const sel = new mod.ActiveSelection(objs, { canvas })
+      canvas.setActiveObject(sel)
+    }
+    canvas.requestRenderAll()
+    setHasObjectSelected(true)
+    setCanvasBodySelected(false)
+    selectionTick()
+    syncTextToolbar()
+    syncShapeToolbar()
+  }, [syncShapeToolbar, syncTextToolbar])
+
+  const alignElementToArtboard = useCallback((kind: CanvasAlignKind) => {
+    const canvas = fabricCanvasRef.current
+    const mod = fabricModRef.current
+    if (!canvas || !mod) return
+    const obj = canvas.getActiveObject()
+    if (!obj) return
+    const pad = ARTBOARD_ALIGN_PAD
+    const br = obj.getBoundingRect()
+    let dx = 0
+    let dy = 0
+    if (kind === 'left') dx = pad - br.left
+    else if (kind === 'centerH')
+      dx = ARTBOARD_W / 2 - br.left - br.width / 2
+    else if (kind === 'right') dx = ARTBOARD_W - pad - br.left - br.width
+    else if (kind === 'top') dy = pad - br.top
+    else if (kind === 'centerV')
+      dy = ARTBOARD_H / 2 - br.top - br.height / 2
+    else if (kind === 'bottom') dy = ARTBOARD_H - pad - br.top - br.height
+
+    if (mod.ActiveSelection && obj instanceof mod.ActiveSelection) {
+      obj.getObjects().forEach((o) => {
+        o.set({
+          left: (o.left ?? 0) + dx,
+          top: (o.top ?? 0) + dy,
+        })
+        o.setCoords()
+      })
+      obj.setCoords()
+    } else {
+      obj.set({
+        left: (obj.left ?? 0) + dx,
+        top: (obj.top ?? 0) + dy,
+      })
+      obj.setCoords()
+    }
+    canvas.requestRenderAll()
+    selectionTick()
+  }, [])
+
   function deleteSelection() {
     const canvas = fabricCanvasRef.current
     if (!canvas) return
@@ -1115,9 +1384,199 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     setBgValue(v)
   }
 
+  let elementToolbarLockedDisplay = false
+  let elementToolbarAlignAlready: Record<CanvasAlignKind, boolean> | null = null
+  {
+    const c = fabricCanvasRef.current
+    const mod = fabricModRef.current
+    if (c && mod) {
+      const a = c.getActiveObject()
+      if (a) {
+        elementToolbarAlignAlready = artboardAlignAlreadySatisfied(
+          a.getBoundingRect(),
+        )
+        if (mod.ActiveSelection && a instanceof mod.ActiveSelection) {
+          const objs = a.getObjects()
+          elementToolbarLockedDisplay =
+            objs.length > 0 && objs.every((o) => getAvnacLocked(o))
+        } else {
+          elementToolbarLockedDisplay = getAvnacLocked(a)
+        }
+      }
+    }
+  }
+
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <div className="pointer-events-none flex shrink-0 justify-center py-2">
+      <div
+        ref={selectionToolsRef}
+        className="pointer-events-auto relative z-30 flex h-14 w-full shrink-0 items-center justify-center px-1 sm:px-2"
+      >
+        {ready && textToolbarValues ? (
+          <TextFormatToolbar
+            values={textToolbarValues}
+            onChange={onTextFormatChange}
+          />
+        ) : null}
+        {ready && !textToolbarValues && shapeToolbarModel ? (
+          <ShapeOptionsToolbar
+            meta={shapeToolbarModel.meta}
+            paintValue={shapeToolbarModel.paint}
+            onPaintChange={applyPaintToSelection}
+            onPolygonSides={applyPolygonSides}
+            onStarPoints={applyStarPoints}
+            onArrowLineStyle={applyArrowLineStyle}
+            onArrowRoundedEnds={applyArrowRoundedEnds}
+            onArrowStrokeWidth={applyArrowStrokeWidth}
+            onArrowPathType={applyArrowPathType}
+          />
+        ) : null}
+        {ready &&
+        !textToolbarValues &&
+        !shapeToolbarModel &&
+        canvasBodySelected ? (
+          <div ref={backgroundPopoverAnchorRef} className="relative">
+            <div className="flex items-center rounded-full border border-black/[0.08] bg-white/90 px-2 py-1 shadow-[0_4px_20px_rgba(0,0,0,0.08)] backdrop-blur-md">
+              <button
+                type="button"
+                className={backgroundTopBtn(false)}
+                onClick={() => setBgPopoverOpen((o) => !o)}
+                aria-label="Page background"
+                aria-expanded={bgPopoverOpen}
+                aria-haspopup="dialog"
+                title="Background"
+              >
+                <HugeiconsIcon
+                  icon={BackgroundIcon}
+                  size={20}
+                  strokeWidth={1.75}
+                />
+                <span
+                  className="h-5 w-5 shrink-0 rounded-md border border-black/15 shadow-inner"
+                  style={bgValueToSwatch(bgValue)}
+                />
+                <span className="pr-0.5">Background</span>
+              </button>
+            </div>
+            {bgPopoverOpen ? (
+              <div
+                ref={backgroundPopoverPanelRef}
+                className={[
+                  'absolute left-1/2 z-[60]',
+                  backgroundPopoverOpenUpward
+                    ? 'bottom-full mb-2'
+                    : 'top-full mt-2',
+                ].join(' ')}
+                style={{
+                  transform: `translateX(calc(-50% + ${backgroundPopoverShiftX}px))`,
+                }}
+              >
+                <BackgroundPopover
+                  value={bgValue}
+                  onChange={(v) => onBackgroundPicked(v)}
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      <div
+        ref={viewportRef}
+        className="relative flex min-h-0 flex-1 flex-col overflow-auto rounded-2xl bg-[var(--surface-subtle)]"
+      >
+        <div className="flex min-h-min w-full flex-1 flex-col items-center justify-center px-4 pb-4 pt-0 sm:px-6 sm:pb-6 sm:pt-1">
+          <div
+            ref={artboardClusterRef}
+            className="relative z-0 -mt-4 inline-block sm:-mt-5"
+          >
+            {ready && hasObjectSelected && elementToolbarLayout ? (
+              <CanvasElementToolbar
+                ref={elementToolbarRef}
+                style={{
+                  left: elementToolbarLayout.left,
+                  top: elementToolbarLayout.top,
+                }}
+                placement={elementToolbarLayout.placement}
+                viewportRef={viewportRef}
+                locked={elementToolbarLockedDisplay}
+                onDuplicate={() => void duplicateElement()}
+                onToggleLock={toggleElementLock}
+                onDelete={deleteSelection}
+                onCopy={() => void copyElementToClipboard()}
+                onPaste={() => void pasteFromClipboard()}
+                onAlign={alignElementToArtboard}
+                alignAlreadySatisfied={
+                  elementToolbarAlignAlready ?? {
+                    left: false,
+                    centerH: false,
+                    right: false,
+                    top: false,
+                    centerV: false,
+                    bottom: false,
+                  }
+                }
+              />
+            ) : null}
+            <div
+              ref={artboardFrameRef}
+              className="relative rounded-sm"
+              style={{
+                lineHeight: 0,
+                boxShadow: canvasBodySelected || artboardHovered
+                  ? `0 4px 24px rgba(0,0,0,0.08), 0 0 0 2px ${EDITOR_ACCENT_PURPLE}`
+                  : '0 4px 24px rgba(0,0,0,0.08)',
+              }}
+              onMouseEnter={() => setArtboardHovered(true)}
+              onMouseLeave={() => setArtboardHovered(false)}
+            >
+              <canvas ref={canvasElRef} className="block max-w-none" />
+              {ready &&
+              (artboardSnapGuides.vertical || artboardSnapGuides.horizontal) ? (
+                <div
+                  className="pointer-events-none absolute inset-0 z-[5]"
+                  aria-hidden
+                >
+                  {artboardSnapGuides.vertical ? (
+                    <div
+                      className="absolute bottom-0 left-1/2 top-0 w-px -translate-x-1/2"
+                      style={{ backgroundColor: EDITOR_ACCENT_PURPLE }}
+                    />
+                  ) : null}
+                  {artboardSnapGuides.horizontal ? (
+                    <div
+                      className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2"
+                      style={{ backgroundColor: EDITOR_ACCENT_PURPLE }}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div
+          ref={canvasZoomRef}
+          className="pointer-events-auto absolute bottom-4 right-5 z-10 flex flex-col items-end gap-1"
+        >
+          {ready && zoomPercent !== null ? (
+            <>
+              <CanvasZoomSlider
+                value={zoomPercent}
+                min={ZOOM_MIN_PCT}
+                max={ZOOM_MAX_PCT}
+                onChange={onZoomSliderChange}
+                onFitRequest={onZoomFitRequest}
+              />
+              <div className="pr-1 text-xs tabular-nums text-[var(--text-muted)]">
+                {ARTBOARD_W}×{ARTBOARD_H}px
+              </div>
+            </>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center pb-2 pt-24">
         <div
           ref={bottomToolbarRef}
           className="pointer-events-auto flex items-center gap-1 rounded-full border border-black/[0.08] bg-white/85 px-2 py-1.5 shadow-[0_8px_30px_rgba(0,0,0,0.08),0_0_0_1px_rgba(255,255,255,0.8)_inset] backdrop-blur-xl"
@@ -1195,136 +1654,6 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
             <span className="px-3 text-xs text-[var(--text-muted)]">
               Loading…
             </span>
-          ) : null}
-        </div>
-      </div>
-
-      <div
-        ref={selectionToolsRef}
-        className="pointer-events-auto relative z-30 flex min-h-11 w-full shrink-0 justify-center px-1 pb-2 sm:px-2"
-      >
-        {ready && textToolbarValues ? (
-          <TextFormatToolbar
-            values={textToolbarValues}
-            onChange={onTextFormatChange}
-          />
-        ) : null}
-        {ready && !textToolbarValues && shapeToolbarModel ? (
-          <ShapeOptionsToolbar
-            meta={shapeToolbarModel.meta}
-            paintValue={shapeToolbarModel.paint}
-            onPaintChange={applyPaintToSelection}
-            onPolygonSides={applyPolygonSides}
-            onStarPoints={applyStarPoints}
-            onArrowLineStyle={applyArrowLineStyle}
-            onArrowRoundedEnds={applyArrowRoundedEnds}
-            onArrowStrokeWidth={applyArrowStrokeWidth}
-            onArrowPathType={applyArrowPathType}
-          />
-        ) : null}
-        {ready &&
-        !textToolbarValues &&
-        !shapeToolbarModel &&
-        canvasBodySelected ? (
-          <div ref={backgroundPopoverAnchorRef} className="relative">
-            <div className="flex items-center rounded-full border border-black/[0.08] bg-white/90 px-2 py-1 shadow-[0_4px_20px_rgba(0,0,0,0.08)] backdrop-blur-md">
-              <button
-                type="button"
-                className={backgroundTopBtn(false)}
-                onClick={() => setBgPopoverOpen((o) => !o)}
-                aria-label="Page background"
-                aria-expanded={bgPopoverOpen}
-                aria-haspopup="dialog"
-                title="Background"
-              >
-                <HugeiconsIcon
-                  icon={BackgroundIcon}
-                  size={20}
-                  strokeWidth={1.75}
-                />
-                <span
-                  className="h-5 w-5 shrink-0 rounded-md border border-black/15 shadow-inner"
-                  style={bgValueToSwatch(bgValue)}
-                />
-                <span className="pr-0.5">Background</span>
-              </button>
-            </div>
-            {bgPopoverOpen ? (
-              <div
-                ref={backgroundPopoverPanelRef}
-                className={[
-                  'absolute left-1/2 z-[60]',
-                  backgroundPopoverOpenUpward
-                    ? 'bottom-full mb-2'
-                    : 'top-full mt-2',
-                ].join(' ')}
-                style={{
-                  transform: `translateX(calc(-50% + ${backgroundPopoverShiftX}px))`,
-                }}
-              >
-                <BackgroundPopover
-                  value={bgValue}
-                  onChange={(v) => onBackgroundPicked(v)}
-                />
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-
-      <div
-        ref={viewportRef}
-        className="relative flex min-h-0 flex-1 flex-col overflow-auto rounded-2xl bg-[var(--surface-subtle)]"
-      >
-        <div className="flex min-h-min w-full flex-1 flex-col items-center justify-center p-4 sm:p-6">
-          <div className="relative z-0 inline-block">
-            <div
-              ref={artboardFrameRef}
-              className="relative rounded-sm shadow-[0_4px_24px_rgba(0,0,0,0.08)]"
-              style={{ lineHeight: 0 }}
-            >
-              <canvas ref={canvasElRef} className="block max-w-none" />
-              {ready &&
-              (artboardSnapGuides.vertical || artboardSnapGuides.horizontal) ? (
-                <div
-                  className="pointer-events-none absolute inset-0 z-[5]"
-                  aria-hidden
-                >
-                  {artboardSnapGuides.vertical ? (
-                    <div
-                      className="absolute bottom-0 left-1/2 top-0 w-px -translate-x-1/2"
-                      style={{ backgroundColor: EDITOR_ACCENT_PURPLE }}
-                    />
-                  ) : null}
-                  {artboardSnapGuides.horizontal ? (
-                    <div
-                      className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2"
-                      style={{ backgroundColor: EDITOR_ACCENT_PURPLE }}
-                    />
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-        <div
-          ref={canvasZoomRef}
-          className="pointer-events-auto absolute bottom-4 right-5 z-10 flex flex-col items-end gap-1"
-        >
-          {ready && zoomPercent !== null ? (
-            <>
-              <CanvasZoomSlider
-                value={zoomPercent}
-                min={ZOOM_MIN_PCT}
-                max={ZOOM_MAX_PCT}
-                onChange={onZoomSliderChange}
-                onFitRequest={onZoomFitRequest}
-              />
-              <div className="pr-1 text-xs tabular-nums text-[var(--text-muted)]">
-                {ARTBOARD_W}×{ARTBOARD_H}px
-              </div>
-            </>
           ) : null}
         </div>
       </div>
