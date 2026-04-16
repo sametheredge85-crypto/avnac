@@ -1,5 +1,4 @@
 import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
-import { TanStackDevtools } from '@tanstack/react-devtools'
 
 import NativeTitleTooltip from '../components/native-title-tooltip'
 import appCss from '../styles.css?url'
