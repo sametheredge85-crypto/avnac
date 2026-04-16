@@ -27,6 +27,7 @@ import {
   parseAvnacDocument,
   type AvnacDocumentV1,
 } from '../lib/avnac-document'
+import { idbGetDocument, idbPutDocument } from '../lib/avnac-editor-idb'
 import { installSceneSnap, type SceneSnapGuide } from '../lib/fabric-scene-snap'
 import { removeActiveObjectFromCanvas } from '../lib/fabric-remove-selection'
 import {
@@ -257,10 +258,18 @@ export type FabricEditorHandle = {
 
 type FabricEditorProps = {
   onReadyChange?: (ready: boolean) => void
+  /** When set, document is restored from and autosaved to IndexedDB under this id. */
+  persistId?: string
 }
 
 const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
-  function FabricEditor({ onReadyChange }, ref) {
+  function FabricEditor({ onReadyChange, persistId }, ref) {
+  const persistIdRef = useRef<string | undefined>(undefined)
+  persistIdRef.current = persistId
+  const idbAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  )
+
   const canvasElRef = useRef<HTMLCanvasElement>(null)
   const artboardFrameRef = useRef<HTMLDivElement>(null)
   const canvasZoomRef = useRef<HTMLDivElement>(null)
@@ -2029,6 +2038,23 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     [syncTextToolbar, syncShapeToolbar],
   )
 
+  const captureDocRef = useRef(captureDoc)
+  captureDocRef.current = captureDoc
+  const applyDocRef = useRef(applyDoc)
+  applyDocRef.current = applyDoc
+
+  const scheduleIdbAutosave = useCallback(() => {
+    const pid = persistIdRef.current
+    if (!pid) return
+    if (idbAutosaveTimerRef.current) clearTimeout(idbAutosaveTimerRef.current)
+    idbAutosaveTimerRef.current = setTimeout(() => {
+      idbAutosaveTimerRef.current = null
+      void idbPutDocument(pid, captureDocRef.current()).catch((err) => {
+        console.error('FabricEditor: IndexedDB autosave failed', err)
+      })
+    }, 500)
+  }, [])
+
   const commitHistory = useCallback(() => {
     if (!ready || applyingHistoryRef.current) return
     const snap = captureDoc()
@@ -2044,11 +2070,14 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
       historyIndexRef.current--
     }
     try {
-      localStorage.setItem(AVNAC_STORAGE_KEY, ser)
+      if (!persistIdRef.current) {
+        localStorage.setItem(AVNAC_STORAGE_KEY, ser)
+      }
     } catch {
       /* ignore */
     }
-  }, [ready, captureDoc])
+    scheduleIdbAutosave()
+  }, [ready, captureDoc, scheduleIdbAutosave])
 
   const undo = useCallback(async () => {
     if (applyingHistoryRef.current) return
@@ -2058,7 +2087,8 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     idx -= 1
     historyIndexRef.current = idx
     await applyDoc(past[idx]!)
-  }, [applyDoc])
+    scheduleIdbAutosave()
+  }, [applyDoc, scheduleIdbAutosave])
 
   const redo = useCallback(async () => {
     if (applyingHistoryRef.current) return
@@ -2068,16 +2098,56 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     idx += 1
     historyIndexRef.current = idx
     await applyDoc(past[idx]!)
-  }, [applyDoc])
+    scheduleIdbAutosave()
+  }, [applyDoc, scheduleIdbAutosave])
 
   useEffect(() => {
     if (!ready) return
-    if (historyInitRef.current) return
-    historyInitRef.current = true
-    const s = captureDoc()
-    historySnapshotsRef.current = [s]
-    historyIndexRef.current = 0
-  }, [ready, captureDoc])
+
+    if (!persistId) {
+      if (!historyInitRef.current) {
+        historyInitRef.current = true
+        historySnapshotsRef.current = [captureDocRef.current()]
+        historyIndexRef.current = 0
+      }
+      return
+    }
+
+    historyInitRef.current = false
+    let cancelled = false
+
+    void (async () => {
+      const raw = await idbGetDocument(persistId)
+      if (cancelled) return
+      const doc = raw ? parseAvnacDocument(raw) : null
+      applyingHistoryRef.current = true
+      try {
+        if (doc) {
+          await applyDocRef.current(doc)
+        }
+      } finally {
+        applyingHistoryRef.current = false
+      }
+      if (cancelled) return
+      historySnapshotsRef.current = [captureDocRef.current()]
+      historyIndexRef.current = 0
+      historyInitRef.current = true
+      scheduleIdbAutosave()
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [ready, persistId, scheduleIdbAutosave])
+
+  useEffect(() => {
+    return () => {
+      if (idbAutosaveTimerRef.current) {
+        clearTimeout(idbAutosaveTimerRef.current)
+        idbAutosaveTimerRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const canvas = fabricCanvasRef.current
@@ -2241,6 +2311,12 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
         const next = captureDoc()
         historySnapshotsRef.current = [next]
         historyIndexRef.current = 0
+        const pid = persistIdRef.current
+        if (pid) {
+          void idbPutDocument(pid, next).catch((err) => {
+            console.error('FabricEditor: IndexedDB save after open failed', err)
+          })
+        }
       })
     },
     [applyDoc, captureDoc, fitArtboardToViewport],
