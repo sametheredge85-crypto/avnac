@@ -1,20 +1,34 @@
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ArrowDown01Icon } from '@hugeicons/core-free-icons'
-import { useEffect, useRef, useState } from 'react'
+import { FileExportIcon } from '@hugeicons/core-free-icons'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useViewportAwarePopoverPlacement } from '../hooks/use-viewport-aware-popover'
+import EditorRangeSlider from './editor-range-slider'
+import { floatingToolbarPopoverClass } from './floating-toolbar-shell'
 
 export type PngExportCrop = 'none' | 'selection' | 'content'
 
 export type ExportPngOptions = {
   multiplier: number
   transparent: boolean
-  crop: PngExportCrop
+  crop?: PngExportCrop
 }
 
 const DEFAULT_EXPORT: ExportPngOptions = {
   multiplier: 1,
   transparent: false,
-  crop: 'none',
 }
+
+const PANEL_ESTIMATE_H = 220
+
+const exportTriggerClass = [
+  'inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full border border-black/[0.08] px-4 text-sm font-medium sm:h-10 sm:px-5',
+  'bg-gradient-to-br from-[#fafaf9] via-[#f2f0f3] to-[#ebe7f3]',
+  'text-[var(--text)] shadow-[0_1px_2px_rgba(0,0,0,0.04)]',
+  'outline-none transition-[background,box-shadow,filter] duration-200',
+  'hover:from-[#f5f4f2] hover:via-[#eceaf1] hover:to-[#e5e0f2] hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]',
+  'focus-visible:ring-2 focus-visible:ring-[#8B3DFF]/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]',
+  'disabled:pointer-events-none disabled:opacity-40',
+].join(' ')
 
 type Props = {
   disabled?: boolean
@@ -24,91 +38,106 @@ type Props = {
 export default function EditorExportMenu({ disabled, onExport }: Props) {
   const [open, setOpen] = useState(false)
   const [opts, setOpts] = useState<ExportPngOptions>(DEFAULT_EXPORT)
-  const wrapRef = useRef<HTMLDivElement>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const pickPanel = useCallback(() => panelRef.current, [])
+
+  const { openUpward, shiftX } = useViewportAwarePopoverPlacement(
+    open,
+    rootRef,
+    PANEL_ESTIMATE_H,
+    pickPanel,
+    'center',
+  )
 
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent) => {
-      const n = e.target as Node
-      if (wrapRef.current?.contains(n)) return
+      if (rootRef.current?.contains(e.target as Node)) return
       setOpen(false)
     }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
   }, [open])
 
+  const mult = Math.max(1, Math.min(3, Math.round(opts.multiplier)))
+
   return (
-    <div ref={wrapRef} className="relative inline-flex">
+    <div ref={rootRef} className="relative shrink-0">
       <button
         type="button"
         disabled={disabled}
-        className="inline-flex h-8 shrink-0 items-center justify-center gap-1 rounded-md border border-[var(--line)] bg-[var(--surface)] px-2 text-sm font-medium text-[var(--text)] transition hover:bg-[var(--hover)] disabled:pointer-events-none disabled:opacity-40"
+        className={exportTriggerClass}
         aria-expanded={open}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
+        title="Export"
         onClick={() => setOpen((o) => !o)}
       >
-        <span className="hidden sm:inline">Export PNG</span>
-        <span className="sm:hidden">PNG</span>
-        <HugeiconsIcon icon={ArrowDown01Icon} size={16} strokeWidth={1.6} />
+        <HugeiconsIcon
+          icon={FileExportIcon}
+          size={18}
+          strokeWidth={1.75}
+          className="shrink-0 text-neutral-800"
+        />
+        <span className="text-[var(--text)]">Export</span>
       </button>
       {open ? (
         <div
-          className="absolute right-0 top-full z-[100] mt-1 w-64 rounded-xl border border-black/[0.08] bg-white p-3 shadow-lg"
-          role="menu"
+          ref={panelRef}
+          className={[
+            'absolute left-1/2 z-[100] min-w-[16rem] p-3',
+            openUpward ? 'bottom-full mb-2' : 'top-full mt-2',
+            floatingToolbarPopoverClass,
+          ].join(' ')}
+          style={{
+            transform: `translateX(calc(-50% + ${shiftX}px))`,
+          }}
+          role="dialog"
+          aria-label="Export"
         >
-          <label className="mb-2 block text-xs font-medium text-neutral-600">
-            Scale
-            <select
-              className="mt-1 w-full rounded-lg border border-black/[0.1] bg-white px-2 py-1.5 text-sm text-neutral-900"
-              value={String(opts.multiplier)}
-              onChange={(e) =>
-                setOpts((p) => ({
-                  ...p,
-                  multiplier: Number(e.target.value),
-                }))
-              }
-            >
-              <option value="1">1×</option>
-              <option value="2">2×</option>
-              <option value="3">3×</option>
-            </select>
-          </label>
-          <label className="mb-2 block text-xs font-medium text-neutral-600">
-            Crop
-            <select
-              className="mt-1 w-full rounded-lg border border-black/[0.1] bg-white px-2 py-1.5 text-sm text-neutral-900"
-              value={opts.crop}
-              onChange={(e) =>
-                setOpts((p) => ({
-                  ...p,
-                  crop: e.target.value as PngExportCrop,
-                }))
-              }
-            >
-              <option value="none">Full artboard</option>
-              <option value="content">Content bounds</option>
-              <option value="selection">Selection</option>
-            </select>
-          </label>
-          <label className="mb-3 flex cursor-pointer items-center gap-2 text-sm text-neutral-800">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <span className="text-[13px] font-medium text-neutral-800">
+              Export scale
+            </span>
+            <span className="text-[13px] tabular-nums text-neutral-600">
+              {mult}×
+            </span>
+          </div>
+          <EditorRangeSlider
+            min={1}
+            max={3}
+            step={1}
+            value={mult}
+            onChange={(n) =>
+              setOpts((p) => ({ ...p, multiplier: Math.round(n) }))
+            }
+            aria-label="PNG export scale"
+            aria-valuemin={1}
+            aria-valuemax={3}
+            aria-valuenow={mult}
+            trackClassName="mb-4 w-full"
+          />
+          <label className="mb-4 flex cursor-pointer items-center gap-2.5 text-[13px] text-neutral-800">
             <input
               type="checkbox"
               checked={opts.transparent}
               onChange={(e) =>
                 setOpts((p) => ({ ...p, transparent: e.target.checked }))
               }
+              className="size-4 shrink-0 rounded border border-black/20"
+              style={{ accentColor: '#8B3DFF' }}
             />
             Transparent background
           </label>
           <button
             type="button"
-            className="w-full rounded-lg bg-neutral-900 py-2 text-sm font-medium text-white hover:bg-neutral-800"
+            className="w-full rounded-lg bg-neutral-900 py-2.5 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800"
             onClick={() => {
-              onExport(opts)
+              onExport({ ...opts, multiplier: mult })
               setOpen(false)
             }}
           >
-            Download
+            Download PNG
           </button>
         </div>
       ) : null}
