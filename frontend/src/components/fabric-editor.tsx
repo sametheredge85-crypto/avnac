@@ -3570,6 +3570,7 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
         open={ready && editorSidebarPanel === 'vector-board'}
         onClose={() => setEditorSidebarPanel(null)}
         boards={vectorBoards}
+        boardDocs={vectorBoardDocs}
         onCreateNew={createVectorBoard}
         onOpenBoard={openVectorBoardWorkspace}
       />
@@ -3583,7 +3584,11 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
           onDocumentChange={(doc) =>
             onVectorBoardDocumentChange(vectorWorkspaceId, doc)
           }
-          onRequestPlaceOnCanvas={placeActiveVectorBoardAtArtboardCenter}
+          onSave={closeVectorWorkspace}
+          onSaveAndPlace={() => {
+            placeActiveVectorBoardAtArtboardCenter()
+            closeVectorWorkspace()
+          }}
           onClose={closeVectorWorkspace}
         />
       ) : null}
