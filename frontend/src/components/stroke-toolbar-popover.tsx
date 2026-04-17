@@ -18,6 +18,8 @@ type Props = {
   strokePaint: BgValue
   onStrokeWidthChange: (px: number) => void
   onStrokePaintChange: (v: BgValue) => void
+  strokeWidthMin?: number
+  strokeWidthMax?: number
 }
 
 export default function StrokeToolbarPopover({
@@ -25,14 +27,16 @@ export default function StrokeToolbarPopover({
   strokePaint,
   onStrokeWidthChange,
   onStrokePaintChange,
+  strokeWidthMin = 0,
+  strokeWidthMax = STROKE_WIDTH_MAX,
 }: Props) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const pickPanel = useCallback(() => panelRef.current, [])
   const w = Math.max(
-    0,
-    Math.min(STROKE_WIDTH_MAX, Math.round(strokeWidthPx)),
+    strokeWidthMin,
+    Math.min(strokeWidthMax, Math.round(strokeWidthPx)),
   )
 
   const { openUpward, shiftX } = useViewportAwarePopoverPlacement(
@@ -93,13 +97,13 @@ export default function StrokeToolbarPopover({
             </span>
           </div>
           <EditorRangeSlider
-            min={0}
-            max={STROKE_WIDTH_MAX}
+            min={strokeWidthMin}
+            max={strokeWidthMax}
             value={w}
             onChange={onStrokeWidthChange}
             aria-label="Stroke width"
-            aria-valuemin={0}
-            aria-valuemax={STROKE_WIDTH_MAX}
+            aria-valuemin={strokeWidthMin}
+            aria-valuemax={strokeWidthMax}
             aria-valuenow={w}
             trackClassName="mb-4 w-full"
           />
