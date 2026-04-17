@@ -103,25 +103,17 @@ export function applySmoothPlacementHandles(
 ): void {
   const B = anchors[anchorIndex]
   if (!B) return
+  // Drag direction is the OUT handle (tangent leaving this anchor forward).
+  // IN handle mirrors across the anchor (tangent coming into it from previous).
+  B.outX = mx
+  B.outY = my
   if (anchorIndex <= 0) {
-    B.outX = mx
-    B.outY = my
     delete B.inX
     delete B.inY
     return
   }
-  B.inX = mx
-  B.inY = my
-  B.outX = 2 * B.x - mx
-  B.outY = 2 * B.y - my
-  const A = anchors[anchorIndex - 1]!
-  const dx = B.x - A.x
-  const dy = B.y - A.y
-  const len = Math.hypot(dx, dy) || 1e-9
-  const handleLen = Math.hypot(mx - B.x, my - B.y)
-  const pull = Math.min(len * 0.55, handleLen * 1.15 + len * 0.08)
-  A.outX = A.x + (dx / len) * pull
-  A.outY = A.y + (dy / len) * pull
+  B.inX = 2 * B.x - mx
+  B.inY = 2 * B.y - my
 }
 
 export function stripAnchorHandles(a: VectorPenAnchor): void {
