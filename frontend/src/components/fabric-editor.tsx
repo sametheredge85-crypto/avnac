@@ -320,10 +320,22 @@ type FabricEditorProps = {
   persistId?: string
   /** Stored with each IndexedDB save (file name in the editor header). */
   persistDisplayName?: string
+  /** When there is no saved document yet, seed artboard size (e.g. from /create?w=&h=). */
+  initialArtboardWidth?: number
+  initialArtboardHeight?: number
 }
 
 const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
-  function FabricEditor({ onReadyChange, persistId, persistDisplayName }, ref) {
+  function FabricEditor(
+    {
+      onReadyChange,
+      persistId,
+      persistDisplayName,
+      initialArtboardWidth,
+      initialArtboardHeight,
+    },
+    ref,
+  ) {
   const persistIdRef = useRef<string | undefined>(undefined)
   persistIdRef.current = persistId
   const persistDisplayNameRef = useRef('')
@@ -2764,6 +2776,56 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
       try {
         if (doc) {
           await applyDocRef.current(doc)
+        } else if (
+          initialArtboardWidth != null &&
+          initialArtboardHeight != null &&
+          Number.isFinite(initialArtboardWidth) &&
+          Number.isFinite(initialArtboardHeight)
+        ) {
+          const W = Math.min(
+            16000,
+            Math.max(100, Math.round(initialArtboardWidth)),
+          )
+          const H = Math.min(
+            16000,
+            Math.max(100, Math.round(initialArtboardHeight)),
+          )
+          artboardWRef.current = W
+          artboardHRef.current = H
+          setArtboardSize({ w: W, h: H })
+          setBgValue({ type: 'solid', color: '#ffffff' })
+          const canvas = fabricCanvasRef.current
+          const mod = fabricModRef.current
+          if (canvas && mod) {
+            canvas.discardActiveObject()
+            const objs = canvas.getObjects().slice()
+            for (const o of objs) canvas.remove(o)
+            canvas.setDimensions({ width: W, height: H })
+            const z = zoomPercentRef.current ?? 100
+            const s = z / 100
+            canvas.setDimensions(
+              { width: W * s, height: H * s },
+              { cssOnly: true },
+            )
+            canvas.backgroundColor = '#ffffff'
+            removeSceneSnapRef.current?.()
+            removeSceneSnapRef.current = installSceneSnap(canvas, {
+              width: W,
+              height: H,
+              fabricMod: mod,
+              onGuidesChange: setSceneSnapGuides,
+            })
+            canvas.calcOffset()
+            canvas.requestRenderAll()
+          }
+          setHasObjectSelected(false)
+          setCanvasBodySelected(true)
+          selectionTick()
+          syncTextToolbarRef.current()
+          syncShapeToolbarRef.current()
+          queueMicrotask(() => {
+            if (!zoomUserAdjustedRef.current) fitArtboardToViewport()
+          })
         }
       } finally {
         applyingHistoryRef.current = false
@@ -2778,7 +2840,14 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
     return () => {
       cancelled = true
     }
-  }, [ready, persistId, scheduleIdbAutosave])
+  }, [
+    ready,
+    persistId,
+    scheduleIdbAutosave,
+    initialArtboardWidth,
+    initialArtboardHeight,
+    fitArtboardToViewport,
+  ])
 
   useEffect(() => {
     setVectorWorkspaceId(null)
