@@ -1,5 +1,9 @@
 import type { FabricObject } from 'fabric'
-import type { BgValue } from '../components/background-popover'
+import {
+  isTransparentCssColor,
+  solidPaintColorsEquivalent,
+  type BgValue,
+} from '../components/background-popover'
 import { linearGradientForBox } from './fabric-linear-gradient'
 
 const AFILL = 'avnacFill' as const
@@ -72,7 +76,10 @@ export function bgValueFromFabricFill(obj: FabricObject): BgValue {
   const stored = getAvnacFill(obj)
   if (stored) return stored
   const f = obj.fill
-  if (typeof f === 'string' && f) return { type: 'solid', color: f }
+  if (typeof f === 'string' && f) {
+    if (isTransparentCssColor(f)) return { type: 'solid', color: 'transparent' }
+    return { type: 'solid', color: f }
+  }
   return { type: 'solid', color: '#262626' }
 }
 
@@ -80,12 +87,16 @@ export function bgValueFromFabricStroke(obj: FabricObject): BgValue {
   const stored = getAvnacStroke(obj)
   if (stored) return stored
   const s = obj.stroke
-  if (typeof s === 'string' && s) return { type: 'solid', color: s }
+  if (typeof s === 'string' && s) {
+    if (isTransparentCssColor(s)) return { type: 'solid', color: 'transparent' }
+    return { type: 'solid', color: s }
+  }
   return { type: 'solid', color: '#262626' }
 }
 
 export function bgValuesShallowEqual(a: BgValue, b: BgValue): boolean {
-  if (a.type === 'solid' && b.type === 'solid') return a.color === b.color
+  if (a.type === 'solid' && b.type === 'solid')
+    return solidPaintColorsEquivalent(a.color, b.color)
   if (a.type === 'gradient' && b.type === 'gradient') {
     return (
       a.angle === b.angle &&
