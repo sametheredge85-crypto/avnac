@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import EditorRangeSlider from './editor-range-slider'
 import { floatingToolbarPopoverClass } from './floating-toolbar-shell'
 
@@ -8,7 +8,34 @@ export type BgValue =
 
 export type GradientStop = { color: string; offset: number }
 
+/** True for CSS colors that are fully invisible (stroke/fill “none”). */
+export function isTransparentCssColor(value: string): boolean {
+  const s = value.trim().toLowerCase()
+  if (s === 'transparent' || s === 'none') return true
+  const m =
+    /^rgba?\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)\s*(?:,\s*([0-9.]+)\s*)?\)$/.exec(
+      s,
+    )
+  if (m && m[4] !== undefined) {
+    const a = parseFloat(m[4])
+    return Number.isFinite(a) && a === 0
+  }
+  if (/^#[0-9a-f]{8}$/i.test(s)) return s.slice(7, 9).toLowerCase() === '00'
+  return false
+}
+
+export function solidPaintColorsEquivalent(a: string, b: string): boolean {
+  if (a === b) return true
+  return isTransparentCssColor(a) && isTransparentCssColor(b)
+}
+
+const TRANSPARENT_SWATCH_STYLE: CSSProperties = {
+  background: 'repeating-conic-gradient(#e2e2e2 0% 25%, #fafafa 0% 50%)',
+  backgroundSize: '8px 8px',
+}
+
 const PRESET_SOLIDS = [
+  'transparent',
   '#ffffff',
   '#f8f9fa',
   '#f1f3f5',
@@ -139,7 +166,10 @@ export function bgValueToCss(v: BgValue): string {
   return v.type === 'solid' ? v.color : v.css
 }
 
-export function bgValueToSwatch(v: BgValue): React.CSSProperties {
+export function bgValueToSwatch(v: BgValue): CSSProperties {
+  if (v.type === 'solid' && isTransparentCssColor(v.color)) {
+    return TRANSPARENT_SWATCH_STYLE
+  }
   return v.type === 'solid'
     ? { backgroundColor: v.color }
     : { backgroundImage: v.css }
@@ -254,13 +284,19 @@ export default function BackgroundPopover({
                 key={hex}
                 type="button"
                 className={`h-12 w-12 shrink-0 rounded-full border transition-shadow ${
-                  value.type === 'solid' && value.color === hex
+                  value.type === 'solid' &&
+                  solidPaintColorsEquivalent(value.color, hex)
                     ? 'border-neutral-900 ring-2 ring-neutral-900/20'
                     : 'border-black/10 hover:border-black/25'
                 }`}
-                style={{ backgroundColor: hex }}
+                style={
+                  hex === 'transparent' || isTransparentCssColor(hex)
+                    ? TRANSPARENT_SWATCH_STYLE
+                    : { backgroundColor: hex }
+                }
                 onClick={() => applySolid(hex)}
-                aria-label={hex}
+                aria-label={hex === 'transparent' ? 'Transparent' : hex}
+                title={hex === 'transparent' ? 'Transparent' : hex}
               />
             ))}
           </div>
@@ -269,9 +305,15 @@ export default function BackgroundPopover({
             <button
               type="button"
               className="h-8 w-8 shrink-0 rounded-full border border-black/15 shadow-inner outline-none ring-offset-2 transition hover:ring-2 hover:ring-neutral-900/10 focus-visible:ring-2 focus-visible:ring-neutral-900/20"
-              style={{
-                backgroundColor: HEX6.test(customColor) ? customColor : '#ffffff',
-              }}
+              style={
+                isTransparentCssColor(customColor)
+                  ? TRANSPARENT_SWATCH_STYLE
+                  : {
+                      backgroundColor: HEX6.test(customColor)
+                        ? customColor
+                        : '#ffffff',
+                    }
+              }
               onClick={() => customColorRef.current?.click()}
               aria-label="Pick custom color"
             />
