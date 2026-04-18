@@ -11,7 +11,6 @@
     "backend": {
       "entrypoint": "backend",
       "routePrefix": "/api",
-      "runtime": "nodejs24.x",
       "installCommand": "npm install --legacy-peer-deps"
     }
   }
