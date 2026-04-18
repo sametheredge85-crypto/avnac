@@ -1,66 +1,68 @@
-import { HugeiconsIcon } from '@hugeicons/react'
-import { FileExportIcon } from '@hugeicons/core-free-icons'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { useViewportAwarePopoverPlacement } from '../hooks/use-viewport-aware-popover'
-import EditorRangeSlider from './editor-range-slider'
-import { floatingToolbarPopoverClass } from './floating-toolbar-shell'
+import { HugeiconsIcon } from "@hugeicons/react";
+import { FileExportIcon } from "@hugeicons/core-free-icons";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { usePostHog } from "posthog-js/react";
+import { useViewportAwarePopoverPlacement } from "../hooks/use-viewport-aware-popover";
+import EditorRangeSlider from "./editor-range-slider";
+import { floatingToolbarPopoverClass } from "./floating-toolbar-shell";
 
-export type PngExportCrop = 'none' | 'selection' | 'content'
+export type PngExportCrop = "none" | "selection" | "content";
 
 export type ExportPngOptions = {
-  multiplier: number
-  transparent: boolean
-  crop?: PngExportCrop
-}
+  multiplier: number;
+  transparent: boolean;
+  crop?: PngExportCrop;
+};
 
 const DEFAULT_EXPORT: ExportPngOptions = {
   multiplier: 1,
   transparent: false,
-}
+};
 
-const PANEL_ESTIMATE_H = 220
+const PANEL_ESTIMATE_H = 220;
 
 const exportTriggerClass = [
-  'inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full border border-black/[0.08] px-4 text-sm font-medium sm:h-10 sm:px-5',
-  'bg-gradient-to-br from-[#fafaf9] via-[#f2f0f3] to-[#ebe7f3]',
-  'text-[var(--text)] shadow-[0_1px_2px_rgba(0,0,0,0.04)]',
-  'outline-none transition-[background,box-shadow,filter] duration-200',
-  'hover:from-[#f5f4f2] hover:via-[#eceaf1] hover:to-[#e5e0f2] hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]',
-  'focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]',
-  'disabled:pointer-events-none disabled:opacity-40',
-].join(' ')
+  "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full border border-black/[0.08] px-4 text-sm font-medium sm:h-10 sm:px-5",
+  "bg-gradient-to-br from-[#fafaf9] via-[#f2f0f3] to-[#ebe7f3]",
+  "text-[var(--text)] shadow-[0_1px_2px_rgba(0,0,0,0.04)]",
+  "outline-none transition-[background,box-shadow,filter] duration-200",
+  "hover:from-[#f5f4f2] hover:via-[#eceaf1] hover:to-[#e5e0f2] hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]",
+  "focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]",
+  "disabled:pointer-events-none disabled:opacity-40",
+].join(" ");
 
 type Props = {
-  disabled?: boolean
-  onExport: (opts: ExportPngOptions) => void
-}
+  disabled?: boolean;
+  onExport: (opts: ExportPngOptions) => void;
+};
 
 export default function EditorExportMenu({ disabled, onExport }: Props) {
-  const [open, setOpen] = useState(false)
-  const [opts, setOpts] = useState<ExportPngOptions>(DEFAULT_EXPORT)
-  const rootRef = useRef<HTMLDivElement>(null)
-  const panelRef = useRef<HTMLDivElement>(null)
-  const pickPanel = useCallback(() => panelRef.current, [])
+  const [open, setOpen] = useState(false);
+  const [opts, setOpts] = useState<ExportPngOptions>(DEFAULT_EXPORT);
+  const posthog = usePostHog();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const pickPanel = useCallback(() => panelRef.current, []);
 
   const { openUpward, shiftX } = useViewportAwarePopoverPlacement(
     open,
     rootRef,
     PANEL_ESTIMATE_H,
     pickPanel,
-    'center',
-  )
+    "center",
+  );
 
   useEffect(() => {
-    if (!open) return
+    if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (rootRef.current?.contains(e.target as Node)) return
-      setOpen(false)
-    }
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
-  }, [open])
+      if (rootRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
 
-  const mult = Math.max(1, Math.min(3, Math.round(opts.multiplier)))
+  const mult = Math.max(1, Math.min(3, Math.round(opts.multiplier)));
 
   return (
     <div ref={rootRef} className="relative shrink-0">
@@ -85,10 +87,10 @@ export default function EditorExportMenu({ disabled, onExport }: Props) {
         <div
           ref={panelRef}
           className={[
-            'absolute left-1/2 z-[100] min-w-[16rem] p-3',
-            openUpward ? 'bottom-full mb-2' : 'top-full mt-2',
+            "absolute left-1/2 z-[100] min-w-[16rem] p-3",
+            openUpward ? "bottom-full mb-2" : "top-full mt-2",
             floatingToolbarPopoverClass,
-          ].join(' ')}
+          ].join(" ")}
           style={{
             transform: `translateX(calc(-50% + ${shiftX}px))`,
           }}
@@ -125,7 +127,7 @@ export default function EditorExportMenu({ disabled, onExport }: Props) {
                 setOpts((p) => ({ ...p, transparent: e.target.checked }))
               }
               className="size-4 shrink-0 rounded border border-black/20"
-              style={{ accentColor: 'var(--accent)' }}
+              style={{ accentColor: "var(--accent)" }}
             />
             Transparent background
           </label>
@@ -133,8 +135,13 @@ export default function EditorExportMenu({ disabled, onExport }: Props) {
             type="button"
             className="w-full rounded-lg bg-neutral-900 py-2.5 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800"
             onClick={() => {
-              onExport({ ...opts, multiplier: mult })
-              setOpen(false)
+              const finalOpts = { ...opts, multiplier: mult };
+              posthog.capture("png_exported", {
+                scale: finalOpts.multiplier,
+                transparent: finalOpts.transparent,
+              });
+              onExport(finalOpts);
+              setOpen(false);
             }}
           >
             Download PNG
@@ -142,5 +149,5 @@ export default function EditorExportMenu({ disabled, onExport }: Props) {
         </div>
       ) : null}
     </div>
-  )
+  );
 }
