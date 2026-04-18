@@ -1,9 +1,13 @@
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ArrowLeft02Icon } from '@hugeicons/core-free-icons'
+import { Home05Icon } from '@hugeicons/core-free-icons'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import EditorExportMenu from '../components/editor-export-menu'
 import FabricEditor, { type FabricEditorHandle } from '../components/fabric-editor'
+import {
+  idbGetEditorRecord,
+  idbSetDocumentName,
+} from '../lib/avnac-editor-idb'
 
 type CreateSearch = {
   id?: string
@@ -22,6 +26,7 @@ export const Route = createFileRoute('/create')({
 function CreatePage() {
   const editorRef = useRef<FabricEditorHandle>(null)
   const [editorReady, setEditorReady] = useState(false)
+  const [documentTitle, setDocumentTitle] = useState('Untitled')
   const search = Route.useSearch()
   const id = search.id
   const navigate = Route.useNavigate()
@@ -35,6 +40,24 @@ function CreatePage() {
     })
   }, [id, navigate])
 
+  useEffect(() => {
+    if (!id) return
+    let cancelled = false
+    void idbGetEditorRecord(id).then((row) => {
+      if (cancelled) return
+      setDocumentTitle(row?.name?.trim() || 'Untitled')
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [id])
+
+  const commitDocumentTitle = () => {
+    const t = documentTitle.trim() || 'Untitled'
+    setDocumentTitle(t)
+    if (id) void idbSetDocumentName(id, t)
+  }
+
   if (!id) {
     return null
   }
@@ -43,16 +66,36 @@ function CreatePage() {
     <div className="flex h-[100dvh] min-h-0 flex-col bg-[var(--surface-subtle)]">
       <header className="flex flex-shrink-0 items-center gap-3 border-b border-[var(--line)] bg-[var(--surface)] px-4 py-3 sm:px-5 sm:py-3.5">
         <Link
-          to="/"
-          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-[var(--line)] bg-[var(--surface)] text-[var(--text)] no-underline transition hover:bg-[var(--hover)]"
-          aria-label="Back to home"
-          title="Back to home"
+          to="/files"
+          className="inline-flex size-10 shrink-0 items-center justify-center rounded-full text-[var(--text-muted)] no-underline transition-colors hover:bg-[var(--hover)] hover:text-[var(--text)]"
+          aria-label="All files"
+          title="All files"
         >
-          <HugeiconsIcon icon={ArrowLeft02Icon} size={20} strokeWidth={1.6} />
+          <HugeiconsIcon
+            icon={Home05Icon}
+            size={18}
+            strokeWidth={1.65}
+            className="shrink-0"
+          />
         </Link>
-        <h1 className="m-0 text-base font-semibold leading-tight text-[var(--text)] sm:text-lg">
-          Editor
-        </h1>
+        <div className="min-w-0 flex-1">
+          <label htmlFor="avnac-doc-title" className="sr-only">
+            Document name
+          </label>
+          <input
+            id="avnac-doc-title"
+            type="text"
+            value={documentTitle}
+            onChange={(e) => setDocumentTitle(e.target.value)}
+            onBlur={commitDocumentTitle}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+            }}
+            className="m-0 w-full min-w-0 truncate border-0 bg-transparent text-sm font-medium leading-snug text-[var(--text)] outline-none focus:ring-0"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
           <EditorExportMenu
             disabled={!editorReady}
@@ -64,6 +107,7 @@ function CreatePage() {
         <FabricEditor
           ref={editorRef}
           persistId={id}
+          persistDisplayName={documentTitle}
           onReadyChange={setEditorReady}
         />
       </div>
