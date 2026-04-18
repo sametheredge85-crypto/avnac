@@ -29,6 +29,7 @@ import {
 } from '../lib/editor-sidebar-panel-layout'
 import type { AiDesignController } from '../lib/avnac-ai-controller'
 import { buildAvnacTamboTools } from '../lib/avnac-ai-tambo-tools'
+import { pickMagicQuickPrompts } from '../lib/avnac-magic-quick-prompts'
 
 type Props = {
   open: boolean
@@ -54,13 +55,6 @@ function getStableUserKey(): string {
   }
 }
 
-const QUICK_PROMPTS: string[] = [
-  'Design a bold typographic poster for a jazz night — stacked title, date, venue, subtle texture.',
-  'Create a square social graphic for a summer sale: 50% OFF, strong type, flat color blocks.',
-  'Lay out a moody album cover: large serif title, artist name below, one accent shape.',
-  'Make a retro event flyer: heavy headline, supporting details, geometric background pattern.',
-]
-
 export default function EditorAiPanel({ open, onClose, controller }: Props) {
   const controllerRef = useRef<AiDesignController | null>(controller)
   useEffect(() => {
@@ -73,6 +67,7 @@ export default function EditorAiPanel({ open, onClose, controller }: Props) {
     () => buildAvnacTamboTools(controllerRef),
     [],
   )
+  const [magicQuickPrompts] = useState(() => pickMagicQuickPrompts())
 
   if (!open) return null
 
@@ -116,7 +111,7 @@ export default function EditorAiPanel({ open, onClose, controller }: Props) {
       {apiKey ? (
         <div className="flex min-h-0 flex-1 flex-col">
           <TamboProvider apiKey={apiKey} userKey={userKey} tools={tools}>
-            <MagicChat />
+            <MagicChat quickPrompts={magicQuickPrompts} />
           </TamboProvider>
         </div>
       ) : (
@@ -221,7 +216,7 @@ function groupMessagesForDisplay(
   return out
 }
 
-function MagicChat() {
+function MagicChat({ quickPrompts }: { quickPrompts: string[] }) {
   const { messages, isStreaming, isWaiting } = useTambo()
   const { value, setValue, submit, isPending } = useTamboThreadInput()
   const [error, setError] = useState<string | null>(null)
@@ -268,6 +263,7 @@ function MagicChat() {
       >
         {showEmpty ? (
           <EmptyState
+            prompts={quickPrompts}
             onPick={(p) => {
               setValue(p)
             }}
@@ -325,7 +321,13 @@ function MagicChat() {
   )
 }
 
-function EmptyState({ onPick }: { onPick: (prompt: string) => void }) {
+function EmptyState({
+  prompts,
+  onPick,
+}: {
+  prompts: string[]
+  onPick: (prompt: string) => void
+}) {
   return (
     <div className="flex flex-col gap-3">
       <div className="rounded-2xl border border-dashed border-black/[0.1] bg-[var(--surface-subtle)] px-4 py-4">
@@ -352,7 +354,7 @@ function EmptyState({ onPick }: { onPick: (prompt: string) => void }) {
         <div className="px-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
           Try one
         </div>
-        {QUICK_PROMPTS.map((p) => (
+        {prompts.map((p) => (
           <button
             key={p}
             type="button"
