@@ -3907,21 +3907,16 @@ const FabricEditor = forwardRef<FabricEditorHandle, FabricEditorProps>(
 
       <div
         ref={canvasZoomRef}
-        className="pointer-events-auto absolute bottom-[max(0.5rem,env(safe-area-inset-bottom,0px))] right-3 z-30 flex flex-col items-end gap-1 sm:right-4"
+        className="pointer-events-auto absolute bottom-[max(0.5rem,env(safe-area-inset-bottom,0px))] right-3 z-30 sm:right-4"
       >
         {ready && zoomPercent !== null ? (
-          <>
-            <CanvasZoomSlider
-              value={zoomPercent}
-              min={ZOOM_MIN_PCT}
-              max={ZOOM_MAX_PCT}
-              onChange={onZoomSliderChange}
-              onFitRequest={onZoomFitRequest}
-            />
-            <span className="pr-1 text-xs tabular-nums text-[var(--text-muted)]">
-              {artboardW}×{artboardH}px
-            </span>
-          </>
+          <CanvasZoomSlider
+            value={zoomPercent}
+            min={ZOOM_MIN_PCT}
+            max={ZOOM_MAX_PCT}
+            onChange={onZoomSliderChange}
+            onFitRequest={onZoomFitRequest}
+          />
         ) : null}
       </div>
 
