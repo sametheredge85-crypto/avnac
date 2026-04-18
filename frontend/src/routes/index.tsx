@@ -16,13 +16,8 @@ function Landing() {
             openly.
           </h1>
           <p className="mb-10 max-w-xl text-lg leading-[1.6] text-[var(--text-muted)] sm:mb-12 sm:text-xl sm:leading-[1.55] lg:text-[1.375rem] lg:leading-[1.5]">
-            Open-source canvas for layouts and graphics. No account — start
-            blank, export when you are done.
+            Open-source canvas for layouts and graphics.
           </p>
-          <div
-            className="mb-10 h-px w-14 bg-[var(--text)] opacity-[0.12] sm:mb-11"
-            aria-hidden="true"
-          />
           <div className="flex flex-wrap items-center gap-4">
             <Link
               to="/create"
