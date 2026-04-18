@@ -210,7 +210,7 @@ export default function NewCanvasDialog({
         <div className="mt-6 flex justify-end border-t border-black/[0.06] pt-5">
           <button
             type="button"
-            className="min-h-10 rounded-full px-5 text-[15px] font-medium text-[var(--text-muted)] hover:bg-black/[0.05] hover:text-[var(--text)]"
+            className="min-h-10 rounded-full bg-black/[0.05] px-5 text-[15px] font-medium text-[var(--text)] transition-colors hover:bg-black/[0.08]"
             onClick={onClose}
           >
             Cancel
