@@ -1,6 +1,6 @@
 export const editorRangeInputClassName = [
   'relative z-10 h-8 w-full cursor-pointer appearance-none bg-transparent',
-  'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8B3DFF]/25 focus-visible:ring-offset-1',
+  'focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/45 focus-visible:ring-offset-1',
   'rounded-full disabled:cursor-not-allowed disabled:opacity-40',
   '[&::-webkit-slider-runnable-track]:h-0 [&::-webkit-slider-runnable-track]:bg-transparent',
   '[&::-webkit-slider-thumb]:-mt-2.5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5',
