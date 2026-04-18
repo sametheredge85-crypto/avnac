@@ -1,150 +1,156 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { useCallback, useEffect, useState } from 'react'
-import DeleteConfirmDialog from '../components/delete-confirm-dialog'
-import FileGridCard from '../components/file-grid-card'
-import FilesMultiselectBar from '../components/files-multiselect-bar'
-import NewCanvasDialog from '../components/new-canvas-dialog'
-import { avnacDocumentPreviewEvictPersistId } from '../lib/avnac-document-preview'
+import { createFileRoute } from "@tanstack/react-router";
+import { useCallback, useEffect, useState } from "react";
+import { usePostHog } from "posthog-js/react";
+import DeleteConfirmDialog from "../components/delete-confirm-dialog";
+import FileGridCard from "../components/file-grid-card";
+import FilesMultiselectBar from "../components/files-multiselect-bar";
+import NewCanvasDialog from "../components/new-canvas-dialog";
+import { avnacDocumentPreviewEvictPersistId } from "../lib/avnac-document-preview";
 import {
   idbDeleteDocument,
   idbListDocuments,
   type AvnacEditorIdbListItem,
-} from '../lib/avnac-editor-idb'
-import { downloadAvnacJsonForId } from '../lib/avnac-files-export'
+} from "../lib/avnac-editor-idb";
+import { downloadAvnacJsonForId } from "../lib/avnac-files-export";
 
-export const Route = createFileRoute('/files')({
+export const Route = createFileRoute("/files")({
   component: FilesPage,
-})
+});
 
 function formatUpdatedAt(ts: number): string {
   try {
     return new Intl.DateTimeFormat(undefined, {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    }).format(new Date(ts))
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(ts));
   } catch {
-    return new Date(ts).toLocaleString()
+    return new Date(ts).toLocaleString();
   }
 }
 
 function FilesPage() {
-  const [items, setItems] = useState<AvnacEditorIdbListItem[] | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [newCanvasOpen, setNewCanvasOpen] = useState(false)
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [items, setItems] = useState<AvnacEditorIdbListItem[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [newCanvasOpen, setNewCanvasOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [deleteDialog, setDeleteDialog] = useState<{
-    ids: string[]
-    title: string
-    message: string
-  } | null>(null)
+    ids: string[];
+    title: string;
+    message: string;
+  } | null>(null);
+  const posthog = usePostHog();
 
-  const clearSelection = useCallback(() => setSelectedIds([]), [])
+  const clearSelection = useCallback(() => setSelectedIds([]), []);
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    )
-  }, [])
+    );
+  }, []);
 
   const refreshList = useCallback(() => {
     void idbListDocuments()
       .then((list) => {
-        setItems(list)
-        setLoadError(null)
+        setItems(list);
+        setLoadError(null);
       })
       .catch(() => {
-        setLoadError('Could not load files.')
-        setItems([])
-      })
-  }, [])
+        setLoadError("Could not load files.");
+        setItems([]);
+      });
+  }, []);
 
   useEffect(() => {
-    refreshList()
-  }, [refreshList])
+    refreshList();
+  }, [refreshList]);
 
   useEffect(() => {
-    if (!items) return
+    if (!items) return;
     if (items.length === 0) {
-      setSelectedIds((prev) => (prev.length ? [] : prev))
-      return
+      setSelectedIds((prev) => (prev.length ? [] : prev));
+      return;
     }
-    const valid = new Set(items.map((i) => i.id))
+    const valid = new Set(items.map((i) => i.id));
     setSelectedIds((prev) => {
-      const next = prev.filter((id) => valid.has(id))
-      return next.length === prev.length ? prev : next
-    })
-  }, [items])
+      const next = prev.filter((id) => valid.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [items]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
+      if (e.key !== "Escape") return;
       if (deleteDialog) {
-        e.preventDefault()
-        setDeleteDialog(null)
-        return
+        e.preventDefault();
+        setDeleteDialog(null);
+        return;
       }
-      if (selectedIds.length > 0) clearSelection()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [deleteDialog, selectedIds.length, clearSelection])
+      if (selectedIds.length > 0) clearSelection();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [deleteDialog, selectedIds.length, clearSelection]);
 
   const bulkDownload = useCallback(() => {
-    const ids = [...selectedIds]
+    const ids = [...selectedIds];
+    posthog.capture("files_bulk_downloaded", { file_count: ids.length });
     void (async () => {
       try {
         for (const id of ids) {
-          await downloadAvnacJsonForId(id)
-          await new Promise((r) => setTimeout(r, 140))
+          await downloadAvnacJsonForId(id);
+          await new Promise((r) => setTimeout(r, 140));
         }
       } catch (err) {
-        console.error('[avnac] bulk download failed', err)
+        posthog.captureException(err);
+        console.error("[avnac] bulk download failed", err);
       }
-    })()
-  }, [selectedIds])
+    })();
+  }, [selectedIds, posthog]);
 
   const bulkTrash = useCallback(() => {
-    const ids = [...selectedIds]
-    if (ids.length === 0) return
-    const n = ids.length
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    const n = ids.length;
     setDeleteDialog({
       ids,
-      title: n === 1 ? 'Remove this file?' : 'Remove these files?',
+      title: n === 1 ? "Remove this file?" : "Remove these files?",
       message:
         n === 1
-          ? 'This will permanently remove the file from this browser. This cannot be undone.'
+          ? "This will permanently remove the file from this browser. This cannot be undone."
           : `This will permanently remove ${n} files from this browser. This cannot be undone.`,
-    })
-  }, [selectedIds])
+    });
+  }, [selectedIds]);
 
   const confirmDelete = useCallback(() => {
-    if (!deleteDialog) return
-    const ids = [...deleteDialog.ids]
-    setDeleteDialog(null)
+    if (!deleteDialog) return;
+    const ids = [...deleteDialog.ids];
+    setDeleteDialog(null);
+    posthog.capture("file_deleted", { file_count: ids.length, file_ids: ids });
     void (async () => {
       try {
         for (const id of ids) {
-          await idbDeleteDocument(id)
-          avnacDocumentPreviewEvictPersistId(id)
+          await idbDeleteDocument(id);
+          avnacDocumentPreviewEvictPersistId(id);
         }
-        setSelectedIds((prev) => prev.filter((id) => !ids.includes(id)))
-        refreshList()
+        setSelectedIds((prev) => prev.filter((id) => !ids.includes(id)));
+        refreshList();
       } catch (err) {
-        console.error('[avnac] delete failed', err)
+        posthog.captureException(err);
+        console.error("[avnac] delete failed", err);
       }
-    })()
-  }, [deleteDialog, refreshList])
+    })();
+  }, [deleteDialog, refreshList, posthog]);
 
   const requestDeleteFile = useCallback((id: string) => {
     setDeleteDialog({
       ids: [id],
-      title: 'Remove this file?',
+      title: "Remove this file?",
       message:
-        'This will permanently remove the file from this browser. This cannot be undone.',
-    })
-  }, [])
+        "This will permanently remove the file from this browser. This cannot be undone.",
+    });
+  }, []);
 
-  const selectionCount = selectedIds.length
+  const selectionCount = selectedIds.length;
 
   return (
     <main className="hero-page relative flex min-h-[100dvh] flex-col overflow-hidden">
@@ -170,7 +176,7 @@ function FilesPage() {
         </div>
 
         <div
-          className={`mx-auto w-full max-w-6xl flex-1 px-5 py-12 sm:px-8 sm:py-16 lg:py-20 ${selectionCount > 0 ? 'pb-28 sm:pb-32' : ''}`}
+          className={`mx-auto w-full max-w-6xl flex-1 px-5 py-12 sm:px-8 sm:py-16 lg:py-20 ${selectionCount > 0 ? "pb-28 sm:pb-32" : ""}`}
         >
           <div className="rise-in">
             <h1 className="display-title mb-4 text-[clamp(2rem,5vw,3.25rem)] font-medium leading-[1.06] tracking-[-0.03em] text-[var(--text)]">
@@ -181,7 +187,9 @@ function FilesPage() {
             </p>
 
             {loadError ? (
-              <p className="text-base leading-relaxed text-red-600">{loadError}</p>
+              <p className="text-base leading-relaxed text-red-600">
+                {loadError}
+              </p>
             ) : null}
 
             {items === null ? (
@@ -229,11 +237,11 @@ function FilesPage() {
       />
       <DeleteConfirmDialog
         open={deleteDialog !== null}
-        title={deleteDialog?.title ?? ''}
-        message={deleteDialog?.message ?? ''}
+        title={deleteDialog?.title ?? ""}
+        message={deleteDialog?.message ?? ""}
         onClose={() => setDeleteDialog(null)}
         onConfirm={confirmDelete}
       />
     </main>
-  )
+  );
 }
