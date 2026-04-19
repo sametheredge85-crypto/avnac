@@ -10,7 +10,8 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   BETTER_AUTH_SECRET: z.string().min(1, "BETTER_AUTH_SECRET is required"),
   BETTER_AUTH_URL: z.string().url().default("http://localhost:3001"),
-  CORS_ORIGIN: z.string().default("http://localhost:3000"),
+  CORS_ORIGIN: z.string().default("http://localhost:3300"),
+  UNSPLASH_ACCESS_KEY: z.string().min(1).optional(),
 });
 
 export const env = envSchema.parse(getRuntimeEnv());
