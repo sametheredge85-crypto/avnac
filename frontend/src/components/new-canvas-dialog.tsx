@@ -1,3 +1,5 @@
+import { StarIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { usePostHog } from "posthog-js/react";
@@ -114,7 +116,24 @@ export default function NewCanvasDialog({
             : "Pick a preset or set a custom artboard size."}
         </p>
 
-        {editorUnsupported ? null : (
+        {editorUnsupported ? (
+          <div className="mt-6">
+            <a
+              href="https://github.com/akinloluwami/avnac"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-12 w-full items-center justify-center gap-2.5 rounded-full border border-[#f6c56a]/60 bg-[linear-gradient(135deg,#fff7d6_0%,#ffe8a3_48%,#ffd36f_100%)] px-6 py-3 text-[15px] font-semibold text-[#3f2a00] no-underline shadow-[0_12px_30px_rgba(245,179,54,0.22),inset_0_1px_0_rgba(255,255,255,0.72)] transition-transform duration-200 hover:-translate-y-0.5 hover:text-[#2f1f00]"
+            >
+              <HugeiconsIcon
+                icon={StarIcon}
+                size={18}
+                strokeWidth={1.9}
+                className="shrink-0"
+              />
+              <span>Star us on GitHub</span>
+            </a>
+          </div>
+        ) : (
           <>
             <div className="mt-6 flex gap-2 rounded-full border border-black/[0.1] bg-black/[0.03] p-1">
               <button
