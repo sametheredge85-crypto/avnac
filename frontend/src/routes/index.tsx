@@ -32,7 +32,7 @@ const initialStickers: Sticker[] = [
     rotation: 6,
     size: "clamp(5.6rem, 10.8vw, 8.8rem)",
     desktop: { x: 74, y: 12 },
-    mobile: { x: 37, y: 20 },
+    mobile: { x: 37, y: 15 },
   },
   {
     id: "star",
@@ -41,7 +41,7 @@ const initialStickers: Sticker[] = [
     rotation: -7,
     size: "clamp(4.4rem, 8.8vw, 7.4rem)",
     desktop: { x: 9, y: 12 },
-    mobile: { x: 7, y: 22 },
+    mobile: { x: 7, y: 16 },
   },
   {
     id: "pineapple",
@@ -68,7 +68,7 @@ const initialStickers: Sticker[] = [
     rotation: 12,
     size: "clamp(4.1rem, 8vw, 6.5rem)",
     desktop: { x: 80, y: 45 },
-    mobile: { x: 72, y: 21 },
+    mobile: { x: 72, y: 15 },
   },
   {
     id: "leaf",
